@@ -1,0 +1,14 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Your rule content
+
+- You can @ files here
+- You can use markdown but dont have to
+
+Make sure you check the codebase before suggesting updates.
+
+The developer is a new builder and wants to build an electron app that keeps on not opening you need to help as you're his last resort. 

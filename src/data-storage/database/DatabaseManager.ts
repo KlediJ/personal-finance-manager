@@ -1,6 +1,7 @@
 import { DatabaseConnection } from './DatabaseConnection';
 import { SchemaInitializer } from './SchemaInitializer';
 import { AccountRepository } from '../repositories/AccountRepository';
+import { TransactionRepository } from '../repositories/TransactionRepository';
 
 export class DatabaseManager {
   private static instance: DatabaseManager;
@@ -8,10 +9,12 @@ export class DatabaseManager {
   
   // Repositories
   private accountRepository: AccountRepository;
+  private transactionRepository: TransactionRepository;
   
   private constructor() {
     // Initialize repositories
     this.accountRepository = new AccountRepository();
+    this.transactionRepository = new TransactionRepository();
   }
   
   public static getInstance(): DatabaseManager {
@@ -52,6 +55,10 @@ export class DatabaseManager {
   
   public getAccountRepository(): AccountRepository {
     return this.accountRepository;
+  }
+  
+  public getTransactionRepository(): TransactionRepository {
+    return this.transactionRepository;
   }
   
   // Add getters for other repositories as they're implemented

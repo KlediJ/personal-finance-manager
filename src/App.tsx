@@ -8,10 +8,10 @@ import MainLayout from './presentation/layouts/MainLayout';
 
 // Pages
 import AccountsPage from './presentation/pages/accounts/AccountsPage';
+import TransactionsPage from './presentation/pages/transactions/TransactionsPage';
 
 // Placeholder components for other pages
 const Dashboard = () => <div><h1>Dashboard</h1><p>Dashboard content will go here</p></div>;
-const Transactions = () => <div><h1>Transactions</h1><p>Transactions content will go here</p></div>;
 const Reports = () => <div><h1>Reports</h1><p>Reports content will go here</p></div>;
 const Settings = () => <div><h1>Settings</h1><p>Settings content will go here</p></div>;
 
@@ -37,7 +37,7 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/accounts" element={<AccountsPage />} />
-            <Route path="/transactions" element={<Transactions />} />
+            <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />

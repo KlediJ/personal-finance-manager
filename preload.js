@@ -11,6 +11,22 @@ contextBridge.exposeInMainWorld('api', {
     delete: (id) => ipcRenderer.invoke('accounts:delete', id),
     getTotalBalance: () => ipcRenderer.invoke('accounts:getTotalBalance')
   },
+  transactions: {
+    getAll: () => ipcRenderer.invoke('transactions:getAll'),
+    getById: (id) => ipcRenderer.invoke('transactions:getById', id),
+    getByAccountId: (accountId) => ipcRenderer.invoke('transactions:getByAccountId', accountId),
+    getByDateRange: (startDate, endDate) => 
+      ipcRenderer.invoke('transactions:getByDateRange', startDate, endDate),
+    getRecent: (limit) => ipcRenderer.invoke('transactions:getRecent', limit),
+    searchByDescription: (term) => ipcRenderer.invoke('transactions:searchByDescription', term),
+    create: (transaction) => ipcRenderer.invoke('transactions:create', transaction),
+    update: (id, transaction) => 
+      ipcRenderer.invoke('transactions:update', id, transaction),
+    delete: (id) => ipcRenderer.invoke('transactions:delete', id),
+    getByCategory: (categoryId) => ipcRenderer.invoke('transactions:getByCategory', categoryId),
+    getByType: (type) => ipcRenderer.invoke('transactions:getByType', type),
+    getByStatus: (status) => ipcRenderer.invoke('transactions:getByStatus', status)
+  },
   // Add database diagnostic information
   database: {
     // You can add database diagnostic methods here in the future

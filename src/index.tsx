@@ -3,8 +3,8 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
 
-// Import mock data for development
-import './data-storage/mock/mockData';
+// Comment out the mock data import
+// import './data-storage/mock/mockData';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Failed to find the root element');

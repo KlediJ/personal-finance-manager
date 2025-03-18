@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import { DatabaseManager } from '../src/data-storage/database/DatabaseManager';
 import { setupAccountHandlers } from './ipc/accountHandlers';
+import { setupTransactionHandlers } from './ipc/transactionHandlers';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -11,6 +12,7 @@ async function createWindow() {
     await DatabaseManager.getInstance().initialize();
     // Set up IPC handlers
     setupAccountHandlers();
+    setupTransactionHandlers();
   } catch (error) {
     console.error('Initialization failed:', error);
   }

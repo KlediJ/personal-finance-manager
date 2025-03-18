@@ -31,6 +31,31 @@ contextBridge.exposeInMainWorld('api', {
   database: {
     // You can add database diagnostic methods here in the future
     getStats: () => "SQLite database is active"
+  },
+  
+  // Import/Export operations
+  import: {
+    // File selection dialog
+    showFileDialog: (options) => ipcRenderer.invoke('import:showFileDialog', options),
+    
+    // File parsing
+    parseCSV: (filePath) => ipcRenderer.invoke('import:parseCSV', filePath),
+    parseExcel: (filePath) => ipcRenderer.invoke('import:parseExcel', filePath),
+    
+    // Data validation and import
+    validateTransactions: (data, mappings) => 
+      ipcRenderer.invoke('import:validateTransactions', data, mappings),
+    saveTransactions: (transactions) => 
+      ipcRenderer.invoke('import:saveTransactions', transactions)
+  },
+  
+  export: {
+    // File save dialog
+    showSaveDialog: (options) => ipcRenderer.invoke('export:showSaveDialog', options),
+    
+    // Export generation
+    transactionsToCSV: (options) => ipcRenderer.invoke('export:transactionsToCSV', options),
+    transactionsToExcel: (options) => ipcRenderer.invoke('export:transactionsToExcel', options)
   }
 });
 

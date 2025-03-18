@@ -109,7 +109,7 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
     const { name, value, type } = e.target;
     
     if (type === 'number') {
-      let numberValue = parseFloat(value);
+      let numberValue = parseFloat(value) || 0;
       
       // For expense transactions, store amount as negative number
       if (name === 'amount' && formValues.transaction_type === TransactionType.EXPENSE) {
@@ -214,7 +214,7 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
   // Format the amount for display
   const getDisplayAmount = () => {
     // Always display a positive number in the form
-    return Math.abs(formValues.amount);
+    return Math.abs(formValues.amount || 0);
   };
 
   return (
@@ -296,7 +296,7 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
               label="Amount"
               type="number"
               fullWidth
-              value={getDisplayAmount()}
+              value={getDisplayAmount().toString()}
               onChange={handleChange}
               error={!!errors.amount}
               helperText={errors.amount}

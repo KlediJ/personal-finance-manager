@@ -27,6 +27,40 @@ declare global {
         getByType: (type: string) => Promise<Transaction[]>;
         getByStatus: (status: string) => Promise<Transaction[]>;
       };
+      database: {
+        getStats: () => string;
+      };
+      import: {
+        showFileDialog: (options?: any) => Promise<{ canceled: boolean, filePath?: string }>;
+        parseCSV: (filePath: string) => Promise<{ success: boolean, data: any[], meta: any, errors?: any[] }>;
+        parseExcel: (filePath: string) => Promise<{ success: boolean, sheets: { name: string, headers: string[], data: any[] }[] }>;
+        validateTransactions: (data: any[], mappings: Record<string, string>) => Promise<{
+          success: boolean,
+          validTransactions: Transaction[],
+          errors: Array<{ row: number, errors: Record<string, string> }>,
+          stats: { total: number, valid: number, invalid: number }
+        }>;
+        saveTransactions: (transactions: Transaction[]) => Promise<{
+          success: boolean,
+          count?: number,
+          error?: string
+        }>;
+      };
+      export: {
+        showSaveDialog: (options?: { format?: 'csv' | 'excel', defaultPath?: string }) => Promise<{ canceled: boolean, filePath?: string }>;
+        transactionsToCSV: (options: { filePath: string, filters?: any }) => Promise<{
+          success: boolean,
+          path?: string,
+          count?: number,
+          error?: string
+        }>;
+        transactionsToExcel: (options: { filePath: string, filters?: any }) => Promise<{
+          success: boolean,
+          path?: string,
+          count?: number,
+          error?: string
+        }>;
+      };
     };
   }
 }

@@ -29,9 +29,13 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { Transaction, TransactionType, TransactionStatus } from '../../../data-storage/models/Transaction';
 import { Account } from '../../../data-storage/models/Account';
 import TransactionFormDialog from './TransactionFormDialog';
+import ImportWizard from '../import-export/ImportWizard';
+import ExportDialog from '../import-export/ExportDialog';
 
 const TransactionsPage: React.FC = () => {
   // State for transactions and loading
@@ -44,6 +48,10 @@ const TransactionsPage: React.FC = () => {
   const [currentTransaction, setCurrentTransaction] = useState<Transaction | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<number | null>(null);
+  
+  // State for import/export
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   
   // State for filters
   const [filterOpen, setFilterOpen] = useState(false);
@@ -304,13 +312,29 @@ const TransactionsPage: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5">Transactions</Typography>
-        <Button 
-          variant="contained" 
-          startIcon={<AddIcon />}
-          onClick={handleAddTransaction}
-        >
-          Add Transaction
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<FileUploadIcon />}
+            onClick={() => setImportWizardOpen(true)}
+          >
+            Import
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<FileDownloadIcon />}
+            onClick={() => setExportDialogOpen(true)}
+          >
+            Export
+          </Button>
+          <Button 
+            variant="contained" 
+            startIcon={<AddIcon />}
+            onClick={handleAddTransaction}
+          >
+            Add Transaction
+          </Button>
+        </Box>
       </Box>
 
       {/* Filters Section */}
@@ -579,6 +603,22 @@ const TransactionsPage: React.FC = () => {
         transaction={currentTransaction}
         onClose={() => setFormOpen(false)}
         onSave={handleSaveTransaction}
+      />
+      
+      {/* Import Wizard */}
+      <ImportWizard
+        open={importWizardOpen}
+        onClose={() => {
+          setImportWizardOpen(false);
+          // Refresh transactions after import
+          loadTransactions();
+        }}
+      />
+      
+      {/* Export Dialog */}
+      <ExportDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
       />
     </Box>
   );

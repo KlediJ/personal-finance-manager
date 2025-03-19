@@ -14,8 +14,8 @@ export class CsvProcessor {
    */
   static parseFile(fileContent: string): Promise<{
     data: any[];
-    meta: Papa.ParseMeta & { fields?: string[] };
-    errors?: Papa.ParseError[];
+    meta: any;
+    errors?: any[];
   }> {
     return new Promise((resolve, reject) => {
       Papa.parse(fileContent, {

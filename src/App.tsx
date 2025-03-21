@@ -9,6 +9,7 @@ import MainLayout from './presentation/layouts/MainLayout';
 // Pages
 import AccountsPage from './presentation/pages/accounts/AccountsPage';
 import TransactionsPage from './presentation/pages/transactions/TransactionsPage';
+import CategoriesPage from './presentation/pages/categories/CategoriesPage';
 
 // Pages
 import DashboardPage from './presentation/pages/dashboard/DashboardPage';
@@ -38,6 +39,7 @@ const App: React.FC = () => {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
+            <Route path="/categories" element={<CategoriesPage />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />

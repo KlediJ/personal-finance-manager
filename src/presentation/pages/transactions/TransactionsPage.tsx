@@ -23,6 +23,7 @@ import {
   FormControl,
   InputLabel,
   Select,
+  Checkbox
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -33,6 +34,7 @@ import FileUploadIcon from '@mui/icons-material/FileUpload';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { Transaction, TransactionType, TransactionStatus } from '../../../data-storage/models/Transaction';
 import { Account } from '../../../data-storage/models/Account';
+import { Category } from '../../../data-storage/models/Category';
 import TransactionFormDialog from './TransactionFormDialog';
 import ImportWizard from '../import-export/ImportWizard';
 import ExportDialog from '../import-export/ExportDialog';
@@ -42,12 +44,15 @@ const TransactionsPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   
   // State for transaction management
   const [formOpen, setFormOpen] = useState(false);
   const [currentTransaction, setCurrentTransaction] = useState<Transaction | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<number | null>(null);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [selectedTransactions, setSelectedTransactions] = useState<number[]>([]);
   
   // State for import/export
   const [importWizardOpen, setImportWizardOpen] = useState(false);
@@ -65,7 +70,7 @@ const TransactionsPage: React.FC = () => {
   const [endDate, setEndDate] = useState<Date | null>(new Date());
   
   // State for notifications
-  const [snackbar, setSnackbar] = useState<{ open: boolean, message: string, severity: 'success' | 'error' }>({
+  const [snackbar, setSnackbar] = useState<{ open: boolean, message: string, severity: 'success' | 'error' | 'warning' }>({
     open: false,
     message: '',
     severity: 'success'
@@ -83,6 +88,17 @@ const TransactionsPage: React.FC = () => {
         message: 'Failed to load accounts',
         severity: 'error'
       });
+    }
+  };
+  
+  // Load categories
+  const loadCategories = async () => {
+    try {
+      const data = await window.api.categories.getAll();
+      setCategories(data);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+      // Don't show an error snackbar for this as it's not critical
     }
   };
 
@@ -177,6 +193,7 @@ const TransactionsPage: React.FC = () => {
   // Initial load
   useEffect(() => {
     loadAccounts();
+    loadCategories();
     loadTransactions();
   }, []);
 
@@ -254,6 +271,68 @@ const TransactionsPage: React.FC = () => {
     setTransactionToDelete(null);
   };
 
+  // Handle bulk delete
+  const handleBulkDeleteConfirm = async () => {
+    if (selectedTransactions.length > 0) {
+      try {
+        console.log('Bulk deleting transactions:', selectedTransactions);
+        const result = await window.api.transactions.bulkDelete(selectedTransactions);
+        
+        if (result.success) {
+          setSnackbar({
+            open: true,
+            message: `${result.count} transactions deleted successfully`,
+            severity: 'success'
+          });
+          loadTransactions();
+        } else if (result.partialSuccess) {
+          setSnackbar({
+            open: true,
+            message: `${result.count} of ${result.totalCount} transactions deleted. Some transactions could not be deleted.`,
+            severity: 'warning'
+          });
+          loadTransactions();
+        } else {
+          setSnackbar({
+            open: true,
+            message: 'Failed to delete transactions: ' + (result.error || 'Unknown error'),
+            severity: 'error'
+          });
+        }
+      } catch (error) {
+        console.error('Error bulk deleting transactions:', error);
+        setSnackbar({
+          open: true,
+          message: 'An error occurred while deleting the transactions',
+          severity: 'error'
+        });
+      }
+    }
+    setBulkDeleteConfirmOpen(false);
+    setSelectedTransactions([]);
+  };
+
+  // Toggle transaction selection
+  const handleToggleSelect = (id: number) => {
+    setSelectedTransactions(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(transactionId => transactionId !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
+  };
+
+  // Toggle select all transactions
+  const handleToggleSelectAll = () => {
+    if (selectedTransactions.length === transactions.length) {
+      setSelectedTransactions([]);
+    } else {
+      // Select all visible transactions
+      setSelectedTransactions(transactions.map(t => t.transaction_id || 0).filter(id => id !== 0));
+    }
+  };
+
   // Format transaction date
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -276,6 +355,13 @@ const TransactionsPage: React.FC = () => {
   const getAccountName = (accountId: number) => {
     const account = accounts.find(a => a.account_id === accountId);
     return account ? account.name : `Account ${accountId}`;
+  };
+  
+  // Get category name by ID
+  const getCategoryName = (categoryId: number | null) => {
+    if (!categoryId) return 'Uncategorized';
+    const category = categories.find(c => c.category_id === categoryId);
+    return category ? category.name : `Category ${categoryId}`;
   };
 
   // Get transaction type label
@@ -327,6 +413,16 @@ const TransactionsPage: React.FC = () => {
           >
             Export
           </Button>
+          {selectedTransactions.length > 0 && (
+            <Button 
+              variant="outlined" 
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={() => setBulkDeleteConfirmOpen(true)}
+            >
+              Delete Selected ({selectedTransactions.length})
+            </Button>
+          )}
           <Button 
             variant="contained" 
             startIcon={<AddIcon />}
@@ -485,9 +581,17 @@ const TransactionsPage: React.FC = () => {
           <Table>
             <TableHead>
               <TableRow>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    indeterminate={selectedTransactions.length > 0 && selectedTransactions.length < transactions.length}
+                    checked={transactions.length > 0 && selectedTransactions.length === transactions.length}
+                    onChange={handleToggleSelectAll}
+                  />
+                </TableCell>
                 <TableCell>Date</TableCell>
                 <TableCell>Description</TableCell>
                 <TableCell>Account</TableCell>
+                <TableCell>Category</TableCell>
                 <TableCell>Type</TableCell>
                 <TableCell align="right">Amount</TableCell>
                 <TableCell>Status</TableCell>
@@ -497,7 +601,7 @@ const TransactionsPage: React.FC = () => {
             <TableBody>
               {transactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">
+                  <TableCell colSpan={9} align="center">
                     <Typography sx={{ py: 2 }}>
                       No transactions found. Try adjusting your filters or adding a new transaction.
                     </Typography>
@@ -506,9 +610,16 @@ const TransactionsPage: React.FC = () => {
               ) : (
                 transactions.map((transaction) => (
                   <TableRow key={transaction.transaction_id}>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        checked={selectedTransactions.includes(transaction.transaction_id!)}
+                        onChange={() => handleToggleSelect(transaction.transaction_id!)}
+                      />
+                    </TableCell>
                     <TableCell>{formatDate(transaction.date)}</TableCell>
                     <TableCell>{transaction.description || 'No description'}</TableCell>
                     <TableCell>{getAccountName(transaction.account_id)}</TableCell>
+                    <TableCell>{getCategoryName(transaction.category_id ?? null)}</TableCell>
                     <TableCell>
                       <Chip
                         label={getTransactionTypeLabel(transaction.transaction_type)}
@@ -578,6 +689,33 @@ const TransactionsPage: React.FC = () => {
               onClick={handleDeleteConfirm}
             >
               Delete
+            </Button>
+          </Box>
+        </Box>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog
+        open={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+      >
+        <Box sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Delete Multiple Transactions
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Are you sure you want to delete {selectedTransactions.length} selected transactions? This action cannot be undone.
+          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button onClick={() => setBulkDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="contained" 
+              color="error"
+              onClick={handleBulkDeleteConfirm}
+            >
+              Delete {selectedTransactions.length} Transactions
             </Button>
           </Box>
         </Box>

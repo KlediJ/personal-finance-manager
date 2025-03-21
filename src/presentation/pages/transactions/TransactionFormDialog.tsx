@@ -21,6 +21,7 @@ import {
   TransactionStatus 
 } from '../../../data-storage/models/Transaction';
 import { Account } from '../../../data-storage/models/Account';
+import { Category } from '../../../data-storage/models/Category';
 
 interface TransactionFormDialogProps {
   open: boolean;
@@ -43,18 +44,7 @@ const defaultTransaction: Transaction = {
   updated_at: new Date().toISOString()
 };
 
-// Mock categories until we implement a proper category system
-const mockCategories = [
-  { id: 1, name: 'Food & Dining' },
-  { id: 2, name: 'Transportation' },
-  { id: 3, name: 'Utilities' },
-  { id: 4, name: 'Housing' },
-  { id: 5, name: 'Entertainment' },
-  { id: 6, name: 'Income' },
-  { id: 7, name: 'Investments' },
-  { id: 8, name: 'Transfers' },
-  { id: 9, name: 'Other' }
-];
+// Categories will be loaded from the database
 
 const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
   open,
@@ -64,15 +54,18 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
 }) => {
   const [formValues, setFormValues] = useState<Transaction>(defaultTransaction);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  // Load accounts for the dropdown
+  // Load accounts and categories for the dropdown
   useEffect(() => {
-    const loadAccounts = async () => {
+    const loadData = async () => {
       try {
         setLoading(true);
+        
+        // Load accounts
         const accountsData = await window.api.accounts.getAll();
         setAccounts(accountsData);
         
@@ -80,15 +73,20 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
         if (accountsData.length > 0 && !transaction) {
           setFormValues(prev => ({ ...prev, account_id: accountsData[0].account_id }));
         }
+        
+        // Load categories
+        const categoriesData = await window.api.categories.getAll();
+        setCategories(categoriesData);
+        
       } catch (error) {
-        console.error('Error loading accounts:', error);
+        console.error('Error loading form data:', error);
       } finally {
         setLoading(false);
       }
     };
     
     if (open) {
-      loadAccounts();
+      loadData();
     }
   }, [open]);
 
@@ -322,8 +320,8 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
                 <MenuItem value="null">
                   <em>No Category</em>
                 </MenuItem>
-                {mockCategories.map(category => (
-                  <MenuItem key={category.id} value={category.id.toString()}>
+                {categories.map(category => (
+                  <MenuItem key={category.category_id} value={category.category_id?.toString()}>
                     {category.name}
                   </MenuItem>
                 ))}

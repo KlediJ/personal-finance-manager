@@ -1,5 +1,6 @@
 import { Account } from '../data-storage/models/Account';
 import { Transaction } from '../data-storage/models/Transaction';
+import { Category } from '../data-storage/models/Category';
 
 declare global {
   interface Window {
@@ -23,9 +24,28 @@ declare global {
         create: (transaction: Transaction) => Promise<{ id: number, success: boolean }>;
         update: (id: number, transaction: Transaction) => Promise<{ success: boolean }>;
         delete: (id: number) => Promise<{ success: boolean }>;
+        bulkDelete: (ids: number[]) => Promise<{ 
+          success?: boolean, 
+          partialSuccess?: boolean, 
+          count?: number, 
+          totalCount?: number, 
+          errors?: Array<{id: number, error: string}>, 
+          error?: string 
+        }>;
         getByCategory: (categoryId: number) => Promise<Transaction[]>;
         getByType: (type: string) => Promise<Transaction[]>;
         getByStatus: (status: string) => Promise<Transaction[]>;
+      };
+      categories: {
+        getAll: () => Promise<Category[]>;
+        getById: (id: number) => Promise<Category | null>;
+        getByType: (type: string) => Promise<Category[]>;
+        getParents: () => Promise<Category[]>;
+        getSubcategories: (parentId: number) => Promise<Category[]>;
+        getHierarchy: () => Promise<{[key: number]: {category: Category, subcategories: Category[]}}>;
+        create: (category: Category) => Promise<{ id: number, success: boolean }>;
+        update: (id: number, category: Category) => Promise<{ success: boolean }>;
+        delete: (id: number) => Promise<{ success: boolean }>;
       };
       database: {
         getStats: () => string;

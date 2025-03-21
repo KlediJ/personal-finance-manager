@@ -3,6 +3,7 @@ import * as path from 'path';
 import { DatabaseManager } from '../src/data-storage/database/DatabaseManager';
 import { setupAccountHandlers } from './ipc/accountHandlers';
 import { setupTransactionHandlers } from './ipc/transactionHandlers';
+import { setupCategoryHandlers } from './ipc/categoryHandlers';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -13,6 +14,7 @@ async function createWindow() {
     // Set up IPC handlers
     setupAccountHandlers();
     setupTransactionHandlers();
+    setupCategoryHandlers();
   } catch (error) {
     console.error('Initialization failed:', error);
   }

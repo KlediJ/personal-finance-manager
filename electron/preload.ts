@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { Account } from '../src/data-storage/models/Account';
 import { Transaction } from '../src/data-storage/models/Transaction';
+import { Category } from '../src/data-storage/models/Category';
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -29,5 +30,16 @@ contextBridge.exposeInMainWorld('api', {
     getByCategory: (categoryId: number) => ipcRenderer.invoke('transactions:getByCategory', categoryId),
     getByType: (type: string) => ipcRenderer.invoke('transactions:getByType', type),
     getByStatus: (status: string) => ipcRenderer.invoke('transactions:getByStatus', status)
+  },
+  categories: {
+    getAll: () => ipcRenderer.invoke('categories:getAll'),
+    getById: (id: number) => ipcRenderer.invoke('categories:getById', id),
+    getByType: (type: string) => ipcRenderer.invoke('categories:getByType', type),
+    getParents: () => ipcRenderer.invoke('categories:getParents'),
+    getSubcategories: (parentId: number) => ipcRenderer.invoke('categories:getSubcategories', parentId),
+    getHierarchy: () => ipcRenderer.invoke('categories:getHierarchy'),
+    create: (category: Category) => ipcRenderer.invoke('categories:create', category),
+    update: (id: number, category: Category) => ipcRenderer.invoke('categories:update', id, category),
+    delete: (id: number) => ipcRenderer.invoke('categories:delete', id)
   }
 });

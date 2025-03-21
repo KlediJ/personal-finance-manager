@@ -19,6 +19,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ReceiptIcon from '@mui/icons-material/Receipt';
+import CategoryIcon from '@mui/icons-material/Category';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -42,6 +43,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Accounts', icon: <AccountBalanceIcon />, path: '/accounts' },
     { text: 'Transactions', icon: <ReceiptIcon />, path: '/transactions' },
+    { text: 'Categories', icon: <CategoryIcon />, path: '/categories' },
     { text: 'Reports', icon: <BarChartIcon />, path: '/reports' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];

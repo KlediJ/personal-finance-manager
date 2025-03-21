@@ -2,7 +2,12 @@
 function setupTransactionHandlers() {
   // Get all transactions
   ipcMain.handle('transactions:getAll', () => {
-    const stmt = db.prepare('SELECT * FROM transactions ORDER BY date DESC');
+    const stmt = db.prepare(`
+      SELECT t.*, c.name as category_name 
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      ORDER BY date DESC
+    `);
     return stmt.all();
   });
   
@@ -14,19 +19,36 @@ function setupTransactionHandlers() {
   
   // Get transactions by account ID
   ipcMain.handle('transactions:getByAccountId', (_, accountId) => {
-    const stmt = db.prepare('SELECT * FROM transactions WHERE account_id = ? ORDER BY date DESC');
+    const stmt = db.prepare(`
+      SELECT t.*, c.name as category_name 
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      WHERE t.account_id = ? 
+      ORDER BY date DESC
+    `);
     return stmt.all(accountId);
   });
   
   // Get transactions by date range
   ipcMain.handle('transactions:getByDateRange', (_, startDate, endDate) => {
-    const stmt = db.prepare('SELECT * FROM transactions WHERE date >= ? AND date <= ? ORDER BY date DESC');
+    const stmt = db.prepare(`
+      SELECT t.*, c.name as category_name 
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      WHERE date >= ? AND date <= ? 
+      ORDER BY date DESC
+    `);
     return stmt.all(startDate, endDate);
   });
   
   // Get recent transactions
   ipcMain.handle('transactions:getRecent', (_, limit) => {
-    const stmt = db.prepare('SELECT * FROM transactions ORDER BY date DESC, transaction_id DESC LIMIT ?');
+    const stmt = db.prepare(`
+      SELECT t.*, c.name as category_name 
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      ORDER BY date DESC, transaction_id DESC LIMIT ?
+    `);
     return stmt.all(limit);
   });
   
@@ -157,6 +179,83 @@ function setupTransactionHandlers() {
     return { success: result.changes > 0 };
   });
   
+  // Bulk delete transactions
+  ipcMain.handle('transactions:bulkDelete', (_, ids) => {
+    try {
+      // Start a transaction to ensure all operations succeed or fail together
+      db.prepare('BEGIN TRANSACTION').run();
+      
+      let successCount = 0;
+      const errors = [];
+      
+      for (const id of ids) {
+        try {
+          // First, get the transaction to reverse its effect on the account balance
+          const getTransaction = db.prepare('SELECT * FROM transactions WHERE transaction_id = ?');
+          const transaction = getTransaction.get(id);
+          
+          if (!transaction) {
+            errors.push({ id, error: 'Transaction not found' });
+            continue;
+          }
+          
+          // Delete the transaction
+          const stmt = db.prepare('DELETE FROM transactions WHERE transaction_id = ?');
+          const result = stmt.run(id);
+          
+          if (result.changes === 0) {
+            errors.push({ id, error: 'Delete operation had no effect' });
+            continue;
+          }
+          
+          // If it was an expense or income, update account balance to reverse the effect
+          if (transaction.transaction_type !== 'transfer') {
+            const updateBalance = db.prepare(`
+              UPDATE accounts 
+              SET current_balance = current_balance - ?, updated_at = CURRENT_TIMESTAMP
+              WHERE account_id = ?
+            `);
+            
+            updateBalance.run(transaction.amount, transaction.account_id);
+          }
+          
+          successCount++;
+        } catch (err) {
+          errors.push({ id, error: err.message });
+        }
+      }
+      
+      // If all transactions were processed successfully, commit the transaction
+      if (errors.length === 0) {
+        db.prepare('COMMIT').run();
+        return { success: true, count: successCount };
+      }
+      
+      // If there were any errors, rollback and return the errors
+      if (successCount === 0) {
+        db.prepare('ROLLBACK').run();
+        return { success: false, errors };
+      }
+      
+      // If some transactions were processed successfully, commit and return partial success
+      db.prepare('COMMIT').run();
+      return { 
+        partialSuccess: true, 
+        count: successCount, 
+        totalCount: ids.length,
+        errors 
+      };
+      
+    } catch (error) {
+      // Rollback on any unexpected error
+      db.prepare('ROLLBACK').run();
+      return { 
+        success: false, 
+        error: error.message 
+      };
+    }
+  });
+  
   // Get transactions by category
   ipcMain.handle('transactions:getByCategory', (_, categoryId) => {
     const stmt = db.prepare('SELECT * FROM transactions WHERE category_id = ? ORDER BY date DESC');
@@ -184,6 +283,9 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const Papa = require('papaparse');
 const ExcelJS = require('exceljs');
+
+// Add a flag to log verbose output during development
+const VERBOSE = true;
 
 // Database path
 const dbPath = path.join(app.getPath('userData'), 'finance_manager_dev.db');
@@ -356,6 +458,120 @@ function setupAccountHandlers() {
   console.log('Account IPC handlers registered');
 }
 
+// Set up IPC handlers for category operations
+function setupCategoryHandlers() {
+  // Get all categories
+  ipcMain.handle('categories:getAll', () => {
+    if (VERBOSE) console.log('Fetching all categories');
+    const stmt = db.prepare('SELECT * FROM categories ORDER BY name');
+    return stmt.all();
+  });
+  
+  // Get category by ID
+  ipcMain.handle('categories:getById', (_, id) => {
+    const stmt = db.prepare('SELECT * FROM categories WHERE category_id = ?');
+    return stmt.get(id);
+  });
+  
+  // Get categories by type
+  ipcMain.handle('categories:getByType', (_, type) => {
+    const stmt = db.prepare('SELECT * FROM categories WHERE type = ? ORDER BY name');
+    return stmt.all(type);
+  });
+  
+  // Get parent categories
+  ipcMain.handle('categories:getParents', () => {
+    const stmt = db.prepare('SELECT * FROM categories WHERE parent_category_id IS NULL ORDER BY name');
+    return stmt.all();
+  });
+  
+  // Get subcategories
+  ipcMain.handle('categories:getSubcategories', (_, parentId) => {
+    const stmt = db.prepare('SELECT * FROM categories WHERE parent_category_id = ? ORDER BY name');
+    return stmt.all(parentId);
+  });
+  
+  // Get category hierarchy
+  ipcMain.handle('categories:getHierarchy', () => {
+    // Get all categories
+    const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
+    
+    // Group by parent
+    const result = {};
+    const parents = categories.filter(c => c.parent_category_id === null);
+    
+    for (const parent of parents) {
+      const subcategories = categories.filter(c => c.parent_category_id === parent.category_id);
+      result[parent.category_id] = {
+        category: parent,
+        subcategories
+      };
+    }
+    
+    return result;
+  });
+  
+  // Create category
+  ipcMain.handle('categories:create', (_, category) => {
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO categories (name, type, parent_category_id, icon)
+        VALUES (?, ?, ?, ?)
+      `);
+      
+      const result = stmt.run(
+        category.name,
+        category.type,
+        category.parent_category_id || null,
+        category.icon || null
+      );
+      
+      return { id: result.lastInsertRowid, success: true };
+    } catch (error) {
+      console.error('Error creating category:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  
+  // Update category
+  ipcMain.handle('categories:update', (_, id, category) => {
+    try {
+      const stmt = db.prepare(`
+        UPDATE categories
+        SET name = ?, type = ?, parent_category_id = ?, icon = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE category_id = ?
+      `);
+      
+      const result = stmt.run(
+        category.name,
+        category.type,
+        category.parent_category_id || null,
+        category.icon || null,
+        id
+      );
+      
+      return { success: result.changes > 0 };
+    } catch (error) {
+      console.error('Error updating category:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  
+  // Delete category
+  ipcMain.handle('categories:delete', (_, id) => {
+    try {
+      const stmt = db.prepare('DELETE FROM categories WHERE category_id = ?');
+      const result = stmt.run(id);
+      return { success: result.changes > 0 };
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  
+  console.log('Category IPC handlers registered');
+}
+
 let mainWindow;
 
 function createWindow() {
@@ -365,6 +581,7 @@ function createWindow() {
   // Set up IPC handlers
   setupAccountHandlers();
   setupTransactionHandlers();
+  setupCategoryHandlers();
   setupImportExportHandlers();
   
   mainWindow = new BrowserWindow({

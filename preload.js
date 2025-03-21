@@ -23,11 +23,23 @@ contextBridge.exposeInMainWorld('api', {
     update: (id, transaction) => 
       ipcRenderer.invoke('transactions:update', id, transaction),
     delete: (id) => ipcRenderer.invoke('transactions:delete', id),
+    bulkDelete: (ids) => ipcRenderer.invoke('transactions:bulkDelete', ids),
     getByCategory: (categoryId) => ipcRenderer.invoke('transactions:getByCategory', categoryId),
     getByType: (type) => ipcRenderer.invoke('transactions:getByType', type),
     getByStatus: (status) => ipcRenderer.invoke('transactions:getByStatus', status)
   },
   // Add database diagnostic information
+  categories: {
+    getAll: () => ipcRenderer.invoke('categories:getAll'),
+    getById: (id) => ipcRenderer.invoke('categories:getById', id),
+    getByType: (type) => ipcRenderer.invoke('categories:getByType', type),
+    getParents: () => ipcRenderer.invoke('categories:getParents'),
+    getSubcategories: (parentId) => ipcRenderer.invoke('categories:getSubcategories', parentId),
+    getHierarchy: () => ipcRenderer.invoke('categories:getHierarchy'),
+    create: (category) => ipcRenderer.invoke('categories:create', category),
+    update: (id, category) => ipcRenderer.invoke('categories:update', id, category),
+    delete: (id) => ipcRenderer.invoke('categories:delete', id)
+  },
   database: {
     // You can add database diagnostic methods here in the future
     getStats: () => "SQLite database is active"

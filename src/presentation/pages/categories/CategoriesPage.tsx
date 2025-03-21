@@ -25,7 +25,11 @@ import CategoryIcon from '@mui/icons-material/Category';
 import { Category, CategoryType } from '../../../data-storage/models/Category';
 import CategoryFormDialog from './CategoryFormDialog';
 
-const CategoriesPage: React.FC = () => {
+interface CategoriesPageProps {
+  inSettingsPage?: boolean;
+}
+
+const CategoriesPage: React.FC<CategoriesPageProps> = ({ inSettingsPage = false }) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [parentCategories, setParentCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -177,7 +181,7 @@ const CategoriesPage: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5">Categories</Typography>
+        {!inSettingsPage && <Typography variant="h5">Categories</Typography>}
         <Button 
           variant="contained" 
           startIcon={<AddIcon />}

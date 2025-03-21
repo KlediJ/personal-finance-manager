@@ -16,7 +16,7 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import MonthlyChart from './charts/MonthlyChart';
 import CategoryBreakdown from './charts/CategoryBreakdown';
 import RecentTransactions from './RecentTransactions';
-import AccountsSummary from './AccountsSummary';
+import CategorySummary from './CategorySummary';
 
 const DashboardPage: React.FC = () => {
   const theme = useTheme();
@@ -359,9 +359,9 @@ const DashboardPage: React.FC = () => {
             </Paper>
           </Grid>
 
-          {/* Accounts Summary */}
+          {/* Category Summary Table with drill-down */}
           <Grid item xs={12} md={5}>
-            <AccountsSummary accounts={accounts} />
+            <CategorySummary data={categorySummary} transactions={recentTransactions} />
           </Grid>
 
           {/* Recent Transactions */}

@@ -23,7 +23,11 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { Account, AccountType } from '../../../data-storage/models/Account';
 import AccountFormDialog from './AccountFormDialog';
 
-const AccountsPage: React.FC = () => {
+interface AccountsPageProps {
+  inSettingsPage?: boolean;
+}
+
+const AccountsPage: React.FC<AccountsPageProps> = ({ inSettingsPage = false }) => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -179,7 +183,7 @@ const AccountsPage: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5">Accounts</Typography>
+        {!inSettingsPage && <Typography variant="h5">Accounts</Typography>}
         <Button 
           variant="contained" 
           startIcon={<AddIcon />}

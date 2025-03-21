@@ -13,6 +13,7 @@ import CategoriesPage from './presentation/pages/categories/CategoriesPage';
 
 // Pages
 import DashboardPage from './presentation/pages/dashboard/DashboardPage';
+import AccountSummaryPage from './presentation/pages/account-summary';
 const Reports = () => <div><h1>Reports</h1><p>Reports content will go here</p></div>;
 const Settings = () => <div><h1>Settings</h1><p>Settings content will go here</p></div>;
 
@@ -37,6 +38,7 @@ const App: React.FC = () => {
         <MainLayout>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/account-summary" element={<AccountSummaryPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/categories" element={<CategoriesPage />} />

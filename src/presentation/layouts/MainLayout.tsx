@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import SummarizeIcon from '@mui/icons-material/Summarize';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import CategoryIcon from '@mui/icons-material/Category';
@@ -41,6 +42,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
+    { text: 'Account Summary', icon: <SummarizeIcon />, path: '/account-summary' },
     { text: 'Accounts', icon: <AccountBalanceIcon />, path: '/accounts' },
     { text: 'Transactions', icon: <ReceiptIcon />, path: '/transactions' },
     { text: 'Categories', icon: <CategoryIcon />, path: '/categories' },
@@ -52,7 +54,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     <div>
       <Toolbar sx={{ justifyContent: 'center' }}>
         <Typography variant="h6" noWrap component="div">
-          Finance Manager
+        Personal Finance Manager
         </Typography>
       </Toolbar>
       <Divider />
@@ -93,7 +95,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div">
-            Personal Finance Manager
+            Libri
           </Typography>
         </Toolbar>
       </AppBar>

@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
     update: (id: number, transaction: Transaction) => 
       ipcRenderer.invoke('transactions:update', id, transaction),
     delete: (id: number) => ipcRenderer.invoke('transactions:delete', id),
+    bulkDelete: (ids: number[]) => ipcRenderer.invoke('transactions:bulkDelete', ids),
     getByCategory: (categoryId: number) => ipcRenderer.invoke('transactions:getByCategory', categoryId),
     getByType: (type: string) => ipcRenderer.invoke('transactions:getByType', type),
     getByStatus: (status: string) => ipcRenderer.invoke('transactions:getByStatus', status)
@@ -41,5 +42,37 @@ contextBridge.exposeInMainWorld('api', {
     create: (category: Category) => ipcRenderer.invoke('categories:create', category),
     update: (id: number, category: Category) => ipcRenderer.invoke('categories:update', id, category),
     delete: (id: number) => ipcRenderer.invoke('categories:delete', id)
+  },
+  database: {
+    // You can add database diagnostic methods here in the future
+    getStats: () => "SQLite database is active"
+  },
+  
+  // Import/Export operations
+  import: {
+    // File selection dialog
+    showFileDialog: (options?: any) => ipcRenderer.invoke('import:showFileDialog', options),
+    
+    // File parsing
+    parseCSV: (filePath: string) => ipcRenderer.invoke('import:parseCSV', filePath),
+    parseExcel: (filePath: string) => ipcRenderer.invoke('import:parseExcel', filePath),
+    
+    // Data validation and import
+    validateTransactions: (data: any[], mappings: Record<string, string>) => 
+      ipcRenderer.invoke('import:validateTransactions', data, mappings),
+    saveTransactions: (transactions: Transaction[]) => 
+      ipcRenderer.invoke('import:saveTransactions', transactions)
+  },
+  
+  export: {
+    // File save dialog
+    showSaveDialog: (options?: { format?: 'csv' | 'excel' }) => 
+      ipcRenderer.invoke('export:showSaveDialog', options),
+    
+    // Export generation
+    transactionsToCSV: (options: { filePath: string, filters?: any }) => 
+      ipcRenderer.invoke('export:transactionsToCSV', options),
+    transactionsToExcel: (options: { filePath: string, filters?: any }) => 
+      ipcRenderer.invoke('export:transactionsToExcel', options)
   }
 });

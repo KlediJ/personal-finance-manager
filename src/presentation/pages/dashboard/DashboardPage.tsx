@@ -13,6 +13,8 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
+import { useNavigate } from 'react-router-dom';
 import MonthlyChart from './charts/MonthlyChart';
 import CategoryBreakdown from './charts/CategoryBreakdown';
 import RecentTransactions from './RecentTransactions';
@@ -20,6 +22,7 @@ import CategorySummary from './CategorySummary';
 
 const DashboardPage: React.FC = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
   // State for dashboard data
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -209,14 +212,23 @@ const DashboardPage: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5">Dashboard</Typography>
-        <Button 
-          variant="outlined" 
-          startIcon={<RefreshIcon />}
-          onClick={loadDashboardData}
-          disabled={loading}
-        >
-          Refresh
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button 
+            variant="outlined" 
+            startIcon={<MonetizationOnIcon />}
+            onClick={() => navigate('/budget')}
+          >
+            Budget
+          </Button>
+          <Button 
+            variant="outlined" 
+            startIcon={<RefreshIcon />}
+            onClick={loadDashboardData}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+        </Box>
       </Box>
 
       {loading ? (

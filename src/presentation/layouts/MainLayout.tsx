@@ -21,7 +21,7 @@ import SummarizeIcon from '@mui/icons-material/Summarize';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import CategoryIcon from '@mui/icons-material/Category';
-import BarChartIcon from '@mui/icons-material/BarChart';
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -44,7 +44,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Account Summary', icon: <SummarizeIcon />, path: '/account-summary' },
     { text: 'Transactions', icon: <ReceiptIcon />, path: '/transactions' },
-    { text: 'Reports', icon: <BarChartIcon />, path: '/reports' },
+    { text: 'Budget', icon: <MonetizationOnIcon />, path: '/budget' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];
 

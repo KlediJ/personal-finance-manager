@@ -15,7 +15,7 @@ import CategoriesPage from './presentation/pages/categories/CategoriesPage';
 import DashboardPage from './presentation/pages/dashboard/DashboardPage';
 import AccountSummaryPage from './presentation/pages/account-summary';
 import SettingsPage from './presentation/pages/settings';
-const Reports = () => <div><h1>Reports</h1><p>Reports content will go here</p></div>;
+import BudgetPage from './presentation/pages/budget';
 
 // Create theme
 const theme = createTheme({
@@ -42,7 +42,7 @@ const App: React.FC = () => {
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/categories" element={<CategoriesPage />} />
-            <Route path="/reports" element={<Reports />} />
+            <Route path="/budget" element={<BudgetPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

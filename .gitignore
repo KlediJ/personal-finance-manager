@@ -35,3 +35,5 @@ build/
 *.sln
 *.sw?
 .DS_Store
+
+**/CLAUDE.local.md

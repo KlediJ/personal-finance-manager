@@ -3,6 +3,7 @@ import { SchemaInitializer } from './SchemaInitializer';
 import { AccountRepository } from '../repositories/AccountRepository';
 import { TransactionRepository } from '../repositories/TransactionRepository';
 import { CategoryRepository } from '../repositories/CategoryRepository';
+import { BudgetRepository } from '../repositories/BudgetRepository';
 
 export class DatabaseManager {
   private static instance: DatabaseManager;
@@ -12,12 +13,30 @@ export class DatabaseManager {
   private accountRepository: AccountRepository;
   private transactionRepository: TransactionRepository;
   private categoryRepository: CategoryRepository;
+  private budgetRepository: BudgetRepository;
   
   private constructor() {
+    console.log('DatabaseManager constructor called - initializing repositories');
+    
     // Initialize repositories
     this.accountRepository = new AccountRepository();
+    console.log('✓ Account repository created');
+    
     this.transactionRepository = new TransactionRepository();
+    console.log('✓ Transaction repository created');
+    
     this.categoryRepository = new CategoryRepository();
+    console.log('✓ Category repository created');
+    
+    try {
+      this.budgetRepository = new BudgetRepository();
+      console.log('✓ Budget repository created successfully');
+    } catch (error) {
+      console.error('Failed to create budget repository:', error);
+      throw error;
+    }
+    
+    console.log('All repositories created in DatabaseManager constructor');
   }
   
   public static getInstance(): DatabaseManager {
@@ -66,6 +85,15 @@ export class DatabaseManager {
 
   public getCategoryRepository(): CategoryRepository {
     return this.categoryRepository;
+  }
+  
+  public getBudgetRepository(): BudgetRepository {
+    console.log('getBudgetRepository called, returning:', !!this.budgetRepository);
+    if (!this.budgetRepository) {
+      console.error('Budget repository is undefined');
+      throw new Error('Budget repository not properly initialized');
+    }
+    return this.budgetRepository;
   }
   
   // Add getters for other repositories as they're implemented

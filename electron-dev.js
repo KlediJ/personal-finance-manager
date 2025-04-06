@@ -582,6 +582,7 @@ function createWindow() {
   setupAccountHandlers();
   setupTransactionHandlers();
   setupCategoryHandlers();
+  setupBudgetHandlers();
   setupImportExportHandlers();
   
   mainWindow = new BrowserWindow({
@@ -615,6 +616,200 @@ app.on('activate', () => {
 });
 
 // Setup Import/Export IPC handlers
+// Set up IPC handlers for budget operations
+function setupBudgetHandlers() {
+  // Create budgets table if it doesn't exist
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS budgets (
+      budget_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      period TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES categories (category_id)
+    )
+  `);
+
+  // Get all budgets
+  ipcMain.handle('budgets:getAll', () => {
+    const stmt = db.prepare('SELECT * FROM budgets');
+    return stmt.all();
+  });
+
+  // Get all budgets with category information
+  ipcMain.handle('budgets:getAllWithCategories', () => {
+    console.log('Handling IPC call: budgets:getAllWithCategories');
+    const stmt = db.prepare(`
+      SELECT b.*, c.name as category_name, c.type as category_type, c.icon as category_icon
+      FROM budgets b
+      JOIN categories c ON b.category_id = c.category_id
+    `);
+    const result = stmt.all();
+    console.log('Result from getAllWithCategories:', result ? `${result.length} budgets found` : 'No results');
+    return result;
+  });
+
+  // Get budget by ID
+  ipcMain.handle('budgets:getById', (_, id) => {
+    const stmt = db.prepare('SELECT * FROM budgets WHERE budget_id = ?');
+    return stmt.get(id);
+  });
+
+  // Get budgets by period
+  ipcMain.handle('budgets:getByPeriod', (_, period) => {
+    const stmt = db.prepare('SELECT * FROM budgets WHERE period = ?');
+    return stmt.all(period);
+  });
+
+  // Get budgets by date range
+  ipcMain.handle('budgets:getByDateRange', (_, startDate, endDate) => {
+    const stmt = db.prepare(`
+      SELECT * FROM budgets
+      WHERE 
+        (start_date <= ? AND end_date >= ?) OR
+        (start_date <= ? AND end_date >= ?) OR
+        (start_date >= ? AND end_date <= ?)
+    `);
+    return stmt.all(endDate, startDate, startDate, endDate, startDate, endDate);
+  });
+
+  // Get budgets by category
+  ipcMain.handle('budgets:getByCategory', (_, categoryId) => {
+    const stmt = db.prepare('SELECT * FROM budgets WHERE category_id = ?');
+    return stmt.all(categoryId);
+  });
+
+  // Get current active budgets
+  ipcMain.handle('budgets:getCurrentBudgets', () => {
+    const today = new Date().toISOString().split('T')[0];
+    const stmt = db.prepare('SELECT * FROM budgets WHERE start_date <= ? AND end_date >= ?');
+    return stmt.all(today, today);
+  });
+
+  // Get current active budgets with category information
+  ipcMain.handle('budgets:getCurrentBudgetsWithCategories', () => {
+    const today = new Date().toISOString().split('T')[0];
+    const stmt = db.prepare(`
+      SELECT b.*, c.name as category_name, c.type as category_type, c.icon as category_icon
+      FROM budgets b
+      JOIN categories c ON b.category_id = c.category_id
+      WHERE b.start_date <= ? AND b.end_date >= ?
+    `);
+    return stmt.all(today, today);
+  });
+
+  // Get budget progress
+  ipcMain.handle('budgets:getBudgetProgress', (_, date) => {
+    // Default to today if no date provided
+    const today = date || new Date().toISOString().split('T')[0];
+    
+    // Get the first day of the month for the given date
+    const month = today.substring(0, 7);
+    const startOfMonth = `${month}-01`;
+    
+    // Get the last day of the month
+    const year = parseInt(month.split('-')[0]);
+    const monthNumber = parseInt(month.split('-')[1]);
+    const lastDay = new Date(year, monthNumber, 0).getDate();
+    const endOfMonth = `${month}-${lastDay}`;
+    
+    const stmt = db.prepare(`
+      SELECT 
+        b.budget_id, 
+        b.category_id, 
+        b.amount as budget_amount, 
+        c.name as category_name,
+        c.type as category_type,
+        c.icon as category_icon,
+        (
+          SELECT COALESCE(SUM(amount), 0)
+          FROM transactions
+          WHERE category_id = b.category_id
+          AND date >= ?
+          AND date <= ?
+        ) as spent_amount
+      FROM budgets b
+      JOIN categories c ON b.category_id = c.category_id
+      WHERE b.period = 'monthly'
+      AND b.start_date <= ?
+      AND b.end_date >= ?
+    `);
+    
+    const rows = stmt.all(startOfMonth, endOfMonth, today, today);
+    
+    return rows.map((row) => {
+      // For expense categories, the spent amount is typically negative
+      // We take the absolute value for easier comparison with budget
+      const spent = row.category_type === 'expense' 
+        ? Math.abs(row.spent_amount) 
+        : row.spent_amount;
+        
+      return {
+        budget_id: row.budget_id,
+        category_id: row.category_id,
+        category_name: row.category_name,
+        category_type: row.category_type,
+        category_icon: row.category_icon,
+        budget_amount: row.budget_amount,
+        spent_amount: spent,
+        remaining_amount: row.budget_amount - spent,
+        percentage: (spent / row.budget_amount) * 100
+      };
+    });
+  });
+
+  // Create budget
+  ipcMain.handle('budgets:create', (_, budget) => {
+    const stmt = db.prepare(`
+      INSERT INTO budgets (category_id, amount, period, start_date, end_date)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    
+    const result = stmt.run(
+      budget.category_id,
+      budget.amount,
+      budget.period,
+      budget.start_date,
+      budget.end_date
+    );
+    
+    return { id: result.lastInsertRowid, success: true };
+  });
+
+  // Update budget
+  ipcMain.handle('budgets:update', (_, id, budget) => {
+    const stmt = db.prepare(`
+      UPDATE budgets
+      SET category_id = ?, amount = ?, period = ?, start_date = ?, end_date = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE budget_id = ?
+    `);
+    
+    const result = stmt.run(
+      budget.category_id,
+      budget.amount,
+      budget.period,
+      budget.start_date,
+      budget.end_date,
+      id
+    );
+    
+    return { success: result.changes > 0 };
+  });
+
+  // Delete budget
+  ipcMain.handle('budgets:delete', (_, id) => {
+    const stmt = db.prepare('DELETE FROM budgets WHERE budget_id = ?');
+    const result = stmt.run(id);
+    return { success: result.changes > 0 };
+  });
+  
+  console.log('Budget IPC handlers registered');
+}
+
 function setupImportExportHandlers() {
   // File dialogs for import/export
   ipcMain.handle('import:showFileDialog', async (_, options) => {

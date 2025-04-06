@@ -4,17 +4,29 @@ import { DatabaseManager } from '../src/data-storage/database/DatabaseManager';
 import { setupAccountHandlers } from './ipc/accountHandlers';
 import { setupTransactionHandlers } from './ipc/transactionHandlers';
 import { setupCategoryHandlers } from './ipc/categoryHandlers';
+import { setupBudgetHandlers } from './ipc/budgetHandlers';
 
 let mainWindow: BrowserWindow | null = null;
 
 async function createWindow() {
   // Initialize database
   try {
+    console.log('Starting database initialization...');
     await DatabaseManager.getInstance().initialize();
+    console.log('Database initialized successfully');
+    
     // Set up IPC handlers
+    console.log('Setting up IPC handlers...');
     setupAccountHandlers();
+    console.log('✓ Account handlers set up');
     setupTransactionHandlers();
+    console.log('✓ Transaction handlers set up');
     setupCategoryHandlers();
+    console.log('✓ Category handlers set up');
+    setupBudgetHandlers();
+    console.log('✓ Budget handlers set up');
+    
+    console.log('All IPC handlers initialized successfully');
   } catch (error) {
     console.error('Initialization failed:', error);
   }

@@ -43,6 +43,27 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         // You can add database diagnostic methods here in the future
         getStats: () => "SQLite database is active"
     },
+    budgets: {
+        getAll: () => electron_1.ipcRenderer.invoke('budgets:getAll'),
+        getAllWithCategories: () => {
+            console.log('Preload: Calling budgets:getAllWithCategories');
+            return electron_1.ipcRenderer.invoke('budgets:getAllWithCategories');
+        },
+        getById: (id) => electron_1.ipcRenderer.invoke('budgets:getById', id),
+        getByPeriod: (period) => electron_1.ipcRenderer.invoke('budgets:getByPeriod', period),
+        getByDateRange: (startDate, endDate) => 
+            electron_1.ipcRenderer.invoke('budgets:getByDateRange', startDate, endDate),
+        getByCategory: (categoryId) => electron_1.ipcRenderer.invoke('budgets:getByCategory', categoryId),
+        getCurrentBudgets: () => electron_1.ipcRenderer.invoke('budgets:getCurrentBudgets'),
+        getCurrentBudgetsWithCategories: () => electron_1.ipcRenderer.invoke('budgets:getCurrentBudgetsWithCategories'),
+        getBudgetProgress: (date) => {
+            console.log('Preload: Calling budgets:getBudgetProgress', date);
+            return electron_1.ipcRenderer.invoke('budgets:getBudgetProgress', date);
+        },
+        create: (budget) => electron_1.ipcRenderer.invoke('budgets:create', budget),
+        update: (id, budget) => electron_1.ipcRenderer.invoke('budgets:update', id, budget),
+        delete: (id) => electron_1.ipcRenderer.invoke('budgets:delete', id)
+    },
     // Import/Export operations
     import: {
         // File selection dialog

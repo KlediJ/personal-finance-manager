@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { Account } from '../src/data-storage/models/Account';
 import { Transaction } from '../src/data-storage/models/Transaction';
 import { Category } from '../src/data-storage/models/Category';
+import { Budget } from '../src/data-storage/models/Budget';
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -46,6 +47,28 @@ contextBridge.exposeInMainWorld('api', {
   database: {
     // You can add database diagnostic methods here in the future
     getStats: () => "SQLite database is active"
+  },
+  
+  budgets: {
+    getAll: () => ipcRenderer.invoke('budgets:getAll'),
+    getAllWithCategories: () => {
+      console.log('Preload: Calling budgets:getAllWithCategories');
+      return ipcRenderer.invoke('budgets:getAllWithCategories');
+    },
+    getById: (id: number) => ipcRenderer.invoke('budgets:getById', id),
+    getByPeriod: (period: string) => ipcRenderer.invoke('budgets:getByPeriod', period),
+    getByDateRange: (startDate: string, endDate: string) => 
+      ipcRenderer.invoke('budgets:getByDateRange', startDate, endDate),
+    getByCategory: (categoryId: number) => ipcRenderer.invoke('budgets:getByCategory', categoryId),
+    getCurrentBudgets: () => ipcRenderer.invoke('budgets:getCurrentBudgets'),
+    getCurrentBudgetsWithCategories: () => ipcRenderer.invoke('budgets:getCurrentBudgetsWithCategories'),
+    getBudgetProgress: (date?: string) => {
+      console.log('Preload: Calling budgets:getBudgetProgress', date);
+      return ipcRenderer.invoke('budgets:getBudgetProgress', date);
+    },
+    create: (budget: Budget) => ipcRenderer.invoke('budgets:create', budget),
+    update: (id: number, budget: Budget) => ipcRenderer.invoke('budgets:update', id, budget),
+    delete: (id: number) => ipcRenderer.invoke('budgets:delete', id)
   },
   
   // Import/Export operations

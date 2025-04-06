@@ -1,6 +1,7 @@
 import { Account } from '../data-storage/models/Account';
 import { Transaction } from '../data-storage/models/Transaction';
 import { Category } from '../data-storage/models/Category';
+import { Budget } from '../data-storage/models/Budget';
 
 declare global {
   interface Window {
@@ -49,6 +50,21 @@ declare global {
       };
       database: {
         getStats: () => string;
+      };
+      
+      budgets: {
+        getAll: () => Promise<Budget[]>;
+        getAllWithCategories: () => Promise<any[]>;
+        getById: (id: number) => Promise<Budget | null>;
+        getByPeriod: (period: string) => Promise<Budget[]>;
+        getByDateRange: (startDate: string, endDate: string) => Promise<Budget[]>;
+        getByCategory: (categoryId: number) => Promise<Budget[]>;
+        getCurrentBudgets: () => Promise<Budget[]>;
+        getCurrentBudgetsWithCategories: () => Promise<any[]>;
+        getBudgetProgress: (date?: string) => Promise<any[]>;
+        create: (budget: Budget) => Promise<{ id: number, success: boolean }>;
+        update: (id: number, budget: Budget) => Promise<{ success: boolean }>;
+        delete: (id: number) => Promise<{ success: boolean }>;
       };
       import: {
         showFileDialog: (options?: any) => Promise<{ canceled: boolean, filePath?: string }>;

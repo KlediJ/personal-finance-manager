@@ -24,8 +24,8 @@ import CategoryIcon from '@mui/icons-material/Category';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { useNavigate, useLocation } from 'react-router-dom';
-// Use a static image path for now 
-// Will use import once webpack is properly configured
+// Import the logo properly
+import logoImage from '../../assets/images/logo.png';
 
 const drawerWidth = 240;
 
@@ -62,7 +62,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             maxWidth: '100%'
           }}
           alt="Libri Finance Logo"
-          src="/assets/images/logo.png"
+          src={logoImage}
         />
         <Typography variant="h6" noWrap component="div">
         Libri

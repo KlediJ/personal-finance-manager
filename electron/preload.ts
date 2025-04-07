@@ -6,6 +6,11 @@ import { Budget } from '../src/data-storage/models/Budget';
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld('electron', {
+  // Get environment information
+  getEnvironment: () => ipcRenderer.invoke('app:getEnvironment')
+});
+
 contextBridge.exposeInMainWorld('api', {
   accounts: {
     getAll: () => ipcRenderer.invoke('accounts:getAll'),

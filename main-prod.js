@@ -1,3 +1,185 @@
+// Production main process
+const path = require('path');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const Database = require('better-sqlite3');
+const fs = require('fs');
+const Papa = require('papaparse');
+const ExcelJS = require('exceljs');
+
+// Load environment configuration
+const config = require('./config').production;
+
+// Database path
+const dbPath = path.join(app.getPath('userData'), config.dbName);
+
+// Database connection
+let db;
+
+// Initialize database
+function initDatabase() {
+  console.log(`Initializing database at: ${dbPath}`);
+  
+  // Make sure the directory exists
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+  
+  // Open database connection
+  db = new Database(dbPath);
+  
+  // Enable foreign keys
+  db.pragma('foreign_keys = ON');
+  
+  // Initialize schema
+  initSchema();
+  
+  return db;
+}
+
+// Create database schema
+function initSchema() {
+  // Accounts table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      account_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      opening_balance REAL NOT NULL DEFAULT 0,
+      current_balance REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  
+  // Transactions table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS transactions (
+      transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      amount REAL NOT NULL,
+      description TEXT,
+      category_id INTEGER,
+      transaction_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      payee_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (account_id) REFERENCES accounts (account_id)
+    )
+  `);
+
+  // Categories table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS categories (
+      category_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'expense',
+      parent_category_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  
+  // Add default categories if none exist
+  const categoryCount = db.prepare('SELECT COUNT(*) as count FROM categories').get().count;
+  if (categoryCount === 0) {
+    const defaultCategories = [
+      { name: 'Food & Dining', type: 'expense' },
+      { name: 'Transportation', type: 'expense' },
+      { name: 'Utilities', type: 'expense' },
+      { name: 'Housing', type: 'expense' },
+      { name: 'Entertainment', type: 'expense' },
+      { name: 'Income', type: 'income' },
+      { name: 'Investments', type: 'transfer' },
+      { name: 'Transfers', type: 'transfer' },
+      { name: 'Other', type: 'expense' }
+    ];
+    
+    const insertCategory = db.prepare('INSERT INTO categories (name, type) VALUES (?, ?)');
+    for (const category of defaultCategories) {
+      insertCategory.run(category.name, category.type);
+    }
+    console.log('Default categories created');
+  }
+  
+  console.log('Database schema initialized');
+}
+
+// Set up IPC handlers for CRUD operations
+function setupAccountHandlers() {
+  // Get all accounts
+  ipcMain.handle('accounts:getAll', () => {
+    const stmt = db.prepare('SELECT * FROM accounts');
+    return stmt.all();
+  });
+  
+  // Get account by ID
+  ipcMain.handle('accounts:getById', (_, id) => {
+    const stmt = db.prepare('SELECT * FROM accounts WHERE account_id = ?');
+    return stmt.get(id);
+  });
+  
+  // Create new account
+  ipcMain.handle('accounts:create', (_, account) => {
+    const stmt = db.prepare(`
+      INSERT INTO accounts (name, type, opening_balance, current_balance, currency, active)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    
+    const result = stmt.run(
+      account.name,
+      account.type,
+      account.opening_balance,
+      account.current_balance || account.opening_balance,
+      account.currency,
+      account.active ? 1 : 0
+    );
+    
+    return { id: result.lastInsertRowid, success: true };
+  });
+  
+  // Update account
+  ipcMain.handle('accounts:update', (_, id, account) => {
+    const stmt = db.prepare(`
+      UPDATE accounts 
+      SET name = ?, type = ?, current_balance = ?, currency = ?, active = ?, 
+          updated_at = CURRENT_TIMESTAMP
+      WHERE account_id = ?
+    `);
+    
+    const result = stmt.run(
+      account.name,
+      account.type,
+      account.current_balance,
+      account.currency,
+      account.active ? 1 : 0,
+      id
+    );
+    
+    return { success: result.changes > 0 };
+  });
+  
+  // Delete account
+  ipcMain.handle('accounts:delete', (_, id) => {
+    const stmt = db.prepare('DELETE FROM accounts WHERE account_id = ?');
+    const result = stmt.run(id);
+    return { success: result.changes > 0 };
+  });
+  
+  // Get total balance
+  ipcMain.handle('accounts:getTotalBalance', () => {
+    const stmt = db.prepare('SELECT SUM(current_balance) as total FROM accounts WHERE active = 1');
+    const result = stmt.get();
+    return result?.total || 0;
+  });
+  
+  console.log('Account IPC handlers registered');
+}
+
 // Set up IPC handlers for transaction operations
 function setupTransactionHandlers() {
   // Get all transactions
@@ -179,83 +361,6 @@ function setupTransactionHandlers() {
     return { success: result.changes > 0 };
   });
   
-  // Bulk delete transactions
-  ipcMain.handle('transactions:bulkDelete', (_, ids) => {
-    try {
-      // Start a transaction to ensure all operations succeed or fail together
-      db.prepare('BEGIN TRANSACTION').run();
-      
-      let successCount = 0;
-      const errors = [];
-      
-      for (const id of ids) {
-        try {
-          // First, get the transaction to reverse its effect on the account balance
-          const getTransaction = db.prepare('SELECT * FROM transactions WHERE transaction_id = ?');
-          const transaction = getTransaction.get(id);
-          
-          if (!transaction) {
-            errors.push({ id, error: 'Transaction not found' });
-            continue;
-          }
-          
-          // Delete the transaction
-          const stmt = db.prepare('DELETE FROM transactions WHERE transaction_id = ?');
-          const result = stmt.run(id);
-          
-          if (result.changes === 0) {
-            errors.push({ id, error: 'Delete operation had no effect' });
-            continue;
-          }
-          
-          // If it was an expense or income, update account balance to reverse the effect
-          if (transaction.transaction_type !== 'transfer') {
-            const updateBalance = db.prepare(`
-              UPDATE accounts 
-              SET current_balance = current_balance - ?, updated_at = CURRENT_TIMESTAMP
-              WHERE account_id = ?
-            `);
-            
-            updateBalance.run(transaction.amount, transaction.account_id);
-          }
-          
-          successCount++;
-        } catch (err) {
-          errors.push({ id, error: err.message });
-        }
-      }
-      
-      // If all transactions were processed successfully, commit the transaction
-      if (errors.length === 0) {
-        db.prepare('COMMIT').run();
-        return { success: true, count: successCount };
-      }
-      
-      // If there were any errors, rollback and return the errors
-      if (successCount === 0) {
-        db.prepare('ROLLBACK').run();
-        return { success: false, errors };
-      }
-      
-      // If some transactions were processed successfully, commit and return partial success
-      db.prepare('COMMIT').run();
-      return { 
-        partialSuccess: true, 
-        count: successCount, 
-        totalCount: ids.length,
-        errors 
-      };
-      
-    } catch (error) {
-      // Rollback on any unexpected error
-      db.prepare('ROLLBACK').run();
-      return { 
-        success: false, 
-        error: error.message 
-      };
-    }
-  });
-  
   // Get transactions by category
   ipcMain.handle('transactions:getByCategory', (_, categoryId) => {
     const stmt = db.prepare('SELECT * FROM transactions WHERE category_id = ? ORDER BY date DESC');
@@ -276,196 +381,11 @@ function setupTransactionHandlers() {
   
   console.log('Transaction IPC handlers registered');
 }
-// Database-focused development script
-const path = require('path');
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
-const Database = require('better-sqlite3');
-const fs = require('fs');
-const Papa = require('papaparse');
-const ExcelJS = require('exceljs');
-
-// Load environment configuration
-const config = require('./config').development;
-
-// Add a flag to log verbose output during development
-const VERBOSE = true;
-
-// Database path
-const dbPath = path.join(app.getPath('userData'), config.dbName);
-
-// Database connection
-let db;
-
-// Initialize database
-function initDatabase() {
-  console.log(`Initializing database at: ${dbPath}`);
-  
-  // Make sure the directory exists
-  const dbDir = path.dirname(dbPath);
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
-  }
-  
-  // Open database connection
-  db = new Database(dbPath, { verbose: console.log });
-  
-  // Enable foreign keys
-  db.pragma('foreign_keys = ON');
-  
-  // Initialize schema
-  initSchema();
-  
-  return db;
-}
-
-// Create database schema
-function initSchema() {
-  // Accounts table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS accounts (
-      account_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL,
-      opening_balance REAL NOT NULL DEFAULT 0,
-      current_balance REAL NOT NULL DEFAULT 0,
-      currency TEXT NOT NULL DEFAULT 'USD',
-      active INTEGER NOT NULL DEFAULT 1,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  
-  // Transactions table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS transactions (
-      transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      account_id INTEGER NOT NULL,
-      date TEXT NOT NULL,
-      amount REAL NOT NULL,
-      description TEXT,
-      category_id INTEGER,
-      transaction_type TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      payee_id INTEGER,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (account_id) REFERENCES accounts (account_id)
-    )
-  `);
-
-  // Categories table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS categories (
-      category_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL DEFAULT 'expense',
-      parent_category_id INTEGER,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  
-  // Add default categories if none exist
-  const categoryCount = db.prepare('SELECT COUNT(*) as count FROM categories').get().count;
-  if (categoryCount === 0) {
-    const defaultCategories = [
-      { name: 'Food & Dining', type: 'expense' },
-      { name: 'Transportation', type: 'expense' },
-      { name: 'Utilities', type: 'expense' },
-      { name: 'Housing', type: 'expense' },
-      { name: 'Entertainment', type: 'expense' },
-      { name: 'Income', type: 'income' },
-      { name: 'Investments', type: 'transfer' },
-      { name: 'Transfers', type: 'transfer' },
-      { name: 'Other', type: 'expense' }
-    ];
-    
-    const insertCategory = db.prepare('INSERT INTO categories (name, type) VALUES (?, ?)');
-    for (const category of defaultCategories) {
-      insertCategory.run(category.name, category.type);
-    }
-    console.log('Default categories created');
-  }
-  
-  console.log('Database schema initialized');
-}
-
-// Set up IPC handlers for CRUD operations
-function setupAccountHandlers() {
-  // Get all accounts
-  ipcMain.handle('accounts:getAll', () => {
-    const stmt = db.prepare('SELECT * FROM accounts');
-    return stmt.all();
-  });
-  
-  // Get account by ID
-  ipcMain.handle('accounts:getById', (_, id) => {
-    const stmt = db.prepare('SELECT * FROM accounts WHERE account_id = ?');
-    return stmt.get(id);
-  });
-  
-  // Create new account
-  ipcMain.handle('accounts:create', (_, account) => {
-    const stmt = db.prepare(`
-      INSERT INTO accounts (name, type, opening_balance, current_balance, currency, active)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
-      account.name,
-      account.type,
-      account.opening_balance,
-      account.current_balance || account.opening_balance,
-      account.currency,
-      account.active ? 1 : 0
-    );
-    
-    return { id: result.lastInsertRowid, success: true };
-  });
-  
-  // Update account
-  ipcMain.handle('accounts:update', (_, id, account) => {
-    const stmt = db.prepare(`
-      UPDATE accounts 
-      SET name = ?, type = ?, current_balance = ?, currency = ?, active = ?, 
-          updated_at = CURRENT_TIMESTAMP
-      WHERE account_id = ?
-    `);
-    
-    const result = stmt.run(
-      account.name,
-      account.type,
-      account.current_balance,
-      account.currency,
-      account.active ? 1 : 0,
-      id
-    );
-    
-    return { success: result.changes > 0 };
-  });
-  
-  // Delete account
-  ipcMain.handle('accounts:delete', (_, id) => {
-    const stmt = db.prepare('DELETE FROM accounts WHERE account_id = ?');
-    const result = stmt.run(id);
-    return { success: result.changes > 0 };
-  });
-  
-  // Get total balance
-  ipcMain.handle('accounts:getTotalBalance', () => {
-    const stmt = db.prepare('SELECT SUM(current_balance) as total FROM accounts WHERE active = 1');
-    const result = stmt.get();
-    return result?.total || 0;
-  });
-  
-  console.log('Account IPC handlers registered');
-}
 
 // Set up IPC handlers for category operations
 function setupCategoryHandlers() {
   // Get all categories
   ipcMain.handle('categories:getAll', () => {
-    if (VERBOSE) console.log('Fetching all categories');
     const stmt = db.prepare('SELECT * FROM categories ORDER BY name');
     return stmt.all();
   });
@@ -575,68 +495,6 @@ function setupCategoryHandlers() {
   console.log('Category IPC handlers registered');
 }
 
-let mainWindow;
-
-function createWindow() {
-  // Initialize database
-  initDatabase();
-  
-  // Set up IPC handlers
-  setupAccountHandlers();
-  setupTransactionHandlers();
-  setupCategoryHandlers();
-  setupBudgetHandlers();
-  setupImportExportHandlers();
-  
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'electron', 'preload.js')
-    }
-  });
-
-  mainWindow.loadURL(`http://localhost:${config.port}`);
-  
-  // Only show DevTools in development mode
-  if (config.showDevTools) {
-    mainWindow.webContents.openDevTools();
-  }
-  
-  // Add environment indicator to window title
-  mainWindow.setTitle('Personal Finance Manager (Development)');
-}
-
-app.whenReady().then(createWindow);
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    // Close database connection
-    if (db) db.close();
-    app.quit();
-  }
-});
-
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-
-// IPC handler to provide environment information to the renderer
-ipcMain.handle('app:getEnvironment', () => {
-  return {
-    environment: 'development',
-    dbPath: dbPath,
-    version: app.getVersion(),
-    appPath: app.getAppPath(),
-    userData: app.getPath('userData')
-  };
-});
-
-// Setup Import/Export IPC handlers
 // Set up IPC handlers for budget operations
 function setupBudgetHandlers() {
   // Create budgets table if it doesn't exist
@@ -831,6 +689,7 @@ function setupBudgetHandlers() {
   console.log('Budget IPC handlers registered');
 }
 
+// Set up import/export handlers
 function setupImportExportHandlers() {
   // File dialogs for import/export
   ipcMain.handle('import:showFileDialog', async (_, options) => {
@@ -874,7 +733,7 @@ function setupImportExportHandlers() {
     
     return { canceled: false, filePath };
   });
-  
+
   // CSV import
   ipcMain.handle('import:parseCSV', async (_, filePath) => {
     try {
@@ -1404,494 +1263,67 @@ function setupImportExportHandlers() {
     }
   });
   
-  // Export transactions to CSV
-  ipcMain.handle('export:transactionsToCSV', async (_, options) => {
-    try {
-      const { filePath, filters } = options;
-      // Build a comprehensive query to get transaction data with related info
-      let query = 'SELECT t.*, a.name as account_name, a.currency, c.name as category_name FROM transactions t';
-      query += ' LEFT JOIN accounts a ON t.account_id = a.account_id';
-      query += ' LEFT JOIN categories c ON t.category_id = c.category_id';
-      
-      const whereConditions = [];
-      const params = [];
-      
-      if (filters) {
-        if (filters.startDate && filters.endDate) {
-          whereConditions.push('t.date >= ? AND t.date <= ?');
-          params.push(filters.startDate, filters.endDate);
-        }
-        
-        if (filters.accountId) {
-          whereConditions.push('t.account_id = ?');
-          params.push(filters.accountId);
-        }
-        
-        if (filters.transactionType) {
-          whereConditions.push('t.transaction_type = ?');
-          params.push(filters.transactionType);
-        }
-      }
-      
-      if (whereConditions.length > 0) {
-        query += ' WHERE ' + whereConditions.join(' AND ');
-      }
-      
-      query += ' ORDER BY t.date DESC';
-      
-      // Execute the query
-      const stmt = db.prepare(query);
-      const transactions = stmt.all(...params);
-      
-      // Transform data for CSV export with enhanced fields
-      const csvData = transactions.map(t => {
-        // Format amount with 2 decimal places
-        const formattedAmount = t.amount.toFixed(2);
-        
-        // Format date consistently
-        let formattedDate = t.date;
-        try {
-          const date = new Date(t.date);
-          if (!isNaN(date.getTime())) {
-            formattedDate = date.toISOString().split('T')[0]; // YYYY-MM-DD format
-          }
-        } catch (e) {
-          // Keep original date if parsing fails
-        }
-        
-        // Format transaction type with first letter capitalized
-        const formattedType = t.transaction_type.charAt(0).toUpperCase() + 
-          t.transaction_type.slice(1);
-        
-        // Format status with first letter capitalized
-        const formattedStatus = t.status.charAt(0).toUpperCase() + 
-          t.status.slice(1);
-        
-        return {
-          Date: formattedDate,
-          Account: t.account_name || `Account ${t.account_id}`,
-          Description: t.description || '',
-          Category: t.category_name || '',
-          Amount: formattedAmount,
-          Currency: t.currency || 'USD',
-          Type: formattedType,
-          Status: formattedStatus,
-          'Transaction ID': t.transaction_id
-        };
-      });
-      
-      // Add summary data at the end
-      const totalIncome = transactions
-        .filter(t => t.transaction_type === 'income')
-        .reduce((sum, t) => sum + t.amount, 0);
-        
-      const totalExpense = transactions
-        .filter(t => t.transaction_type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0);
-        
-      const netAmount = totalIncome + totalExpense; // Expense is already negative
-      
-      // Add a few empty rows before summary
-      csvData.push({});
-      csvData.push({});
-      
-      // Add summary data
-      csvData.push({
-        Date: 'SUMMARY',
-        Account: '',
-        Description: '',
-        Category: '',
-        Amount: '',
-        Currency: '',
-        Type: '',
-        Status: '',
-        'Transaction ID': ''
-      });
-      
-      csvData.push({
-        Date: 'Total Income',
-        Account: '',
-        Description: '',
-        Category: '',
-        Amount: totalIncome.toFixed(2),
-        Currency: '',
-        Type: '',
-        Status: '',
-        'Transaction ID': ''
-      });
-      
-      csvData.push({
-        Date: 'Total Expenses',
-        Account: '',
-        Description: '',
-        Category: '',
-        Amount: totalExpense.toFixed(2),
-        Currency: '',
-        Type: '',
-        Status: '',
-        'Transaction ID': ''
-      });
-      
-      csvData.push({
-        Date: 'Net Amount',
-        Account: '',
-        Description: '',
-        Category: '',
-        Amount: netAmount.toFixed(2),
-        Currency: '',
-        Type: '',
-        Status: '',
-        'Transaction ID': ''
-      });
-      
-      // Convert to CSV with enhanced options
-      const csv = Papa.unparse(csvData, {
-        quotes: true, // Quote all fields for better compatibility
-        header: true,
-        newline: '\r\n', // Standard newline for most spreadsheet applications
-        delimiter: ',',
-        skipEmptyLines: true
-      });
-      
-      // Add UTF-8 BOM for Excel compatibility
-      const csvWithBOM = '\ufeff' + csv;
-      
-      // Write to file
-      fs.writeFileSync(filePath, csvWithBOM, 'utf8');
-      
-      return {
-        success: true,
-        path: filePath,
-        count: transactions.length
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  });
-  
-  // Export transactions to Excel
-  ipcMain.handle('export:transactionsToExcel', async (_, options) => {
-    try {
-      const { filePath, filters } = options;
-      
-      // Build a comprehensive query to get transaction data with related info
-      let query = 'SELECT t.*, a.name as account_name, a.currency, c.name as category_name FROM transactions t';
-      query += ' LEFT JOIN accounts a ON t.account_id = a.account_id';
-      query += ' LEFT JOIN categories c ON t.category_id = c.category_id';
-      
-      const whereConditions = [];
-      const params = [];
-      
-      if (filters) {
-        if (filters.startDate && filters.endDate) {
-          whereConditions.push('t.date >= ? AND t.date <= ?');
-          params.push(filters.startDate, filters.endDate);
-        }
-        
-        if (filters.accountId) {
-          whereConditions.push('t.account_id = ?');
-          params.push(filters.accountId);
-        }
-        
-        if (filters.transactionType) {
-          whereConditions.push('t.transaction_type = ?');
-          params.push(filters.transactionType);
-        }
-      }
-      
-      if (whereConditions.length > 0) {
-        query += ' WHERE ' + whereConditions.join(' AND ');
-      }
-      
-      // Sort by date, newest first
-      query += ' ORDER BY t.date DESC';
-      
-      // Execute the query
-      const stmt = db.prepare(query);
-      const transactions = stmt.all(...params);
-      
-      // Create Excel workbook
-      const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'Personal Finance Manager';
-      workbook.created = new Date();
-      workbook.modified = new Date();
-      workbook.lastPrinted = new Date();
-      
-      // Add properties
-      workbook.properties.date1904 = false;
-      workbook.properties.title = 'Transaction Export';
-      workbook.properties.subject = 'Financial Data';
-      workbook.properties.keywords = 'finance,transactions,export';
-      workbook.properties.category = 'Finance';
-      
-      // Create transactions sheet
-      const worksheet = workbook.addWorksheet('Transactions', {
-        properties: { tabColor: { argb: 'FF4F81BD' } }
-      });
-      
-      // Define columns with styling
-      worksheet.columns = [
-        { header: 'Date', key: 'date', width: 12 },
-        { header: 'Account', key: 'account', width: 20 },
-        { header: 'Description', key: 'description', width: 35 },
-        { header: 'Category', key: 'category', width: 20 },
-        { header: 'Amount', key: 'amount', width: 12 },
-        { header: 'Type', key: 'type', width: 10 },
-        { header: 'Status', key: 'status', width: 12 }
-      ];
-      
-      // Style header row
-      const headerRow = worksheet.getRow(1);
-      headerRow.font = { bold: true, size: 12 };
-      headerRow.height = 20;
-      
-      // Add light blue fill to header
-      headerRow.eachCell((cell) => {
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFD9E1F2' }
-        };
-        
-        cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        };
-        
-        // Center align headers
-        cell.alignment = {
-          vertical: 'middle',
-          horizontal: 'center'
-        };
-      });
-      
-      // Default currency for formatting (fallback to USD)
-      let defaultCurrency = 'USD';
-      if (transactions.length > 0 && transactions[0].currency) {
-        defaultCurrency = transactions[0].currency;
-      }
-      
-      // Add data rows with conditional formatting
-      transactions.forEach((t, index) => {
-        const rowNum = index + 2; // +2 because header is row 1 and we're 0-indexed
-        
-        const row = worksheet.addRow({
-          date: t.date,
-          account: t.account_name || `Account ${t.account_id}`,
-          description: t.description || '',
-          category: t.category_name || '',
-          amount: t.amount,
-          type: t.transaction_type,
-          status: t.status
-        });
-        
-        // Style the amount cell based on transaction type
-        const amountCell = row.getCell('amount');
-        
-        // Format amount with currency
-        const currency = t.currency || defaultCurrency;
-        amountCell.numFmt = `_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)`;
-        
-        // Color code by transaction type
-        if (t.transaction_type === 'expense') {
-          amountCell.font = { color: { argb: 'FFFF0000' } }; // Red for expense
-        } else if (t.transaction_type === 'income') {
-          amountCell.font = { color: { argb: 'FF006100' } }; // Green for income
-        }
-        
-        // Right-align amount cells
-        amountCell.alignment = { horizontal: 'right' };
-        
-        // Add alternating row colors for readability
-        if (index % 2 === 1) {
-          row.eachCell((cell) => {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFF5F5F5' } // Light gray
-            };
-          });
-        }
-      });
-      
-      // Add totals and summary
-      worksheet.addRow([]); // Empty row for spacing
-      
-      // Calculate summary statistics
-      const totalIncome = transactions
-        .filter(t => t.transaction_type === 'income')
-        .reduce((sum, t) => sum + t.amount, 0);
-        
-      const totalExpense = transactions
-        .filter(t => t.transaction_type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0);
-        
-      const netAmount = totalIncome + totalExpense; // Expense amounts are already negative
-      
-      // Add summary section with formatting
-      const summaryRow = worksheet.addRow(['Summary', '', '', '', '', '', '']);
-      summaryRow.font = { bold: true, size: 12 };
-      worksheet.mergeCells(summaryRow.number, 1, summaryRow.number, 7);
-      summaryRow.getCell(1).alignment = { horizontal: 'center' };
-      
-      // Add total rows
-      const incomeRow = worksheet.addRow(['Total Income', '', '', '', totalIncome, '', '']);
-      const expenseRow = worksheet.addRow(['Total Expenses', '', '', '', totalExpense, '', '']);
-      const netRow = worksheet.addRow(['Net Amount', '', '', '', netAmount, '', '']);
-      netRow.font = { bold: true };
-      
-      // Format total amount cells
-      [incomeRow, expenseRow, netRow].forEach(row => {
-        const cell = row.getCell(5); // 'Amount' column
-        cell.numFmt = `_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)`;
-        cell.alignment = { horizontal: 'right' };
-      });
-      
-      // Color code summary amounts
-      incomeRow.getCell(5).font = { color: { argb: 'FF006100' } }; // Green
-      expenseRow.getCell(5).font = { color: { argb: 'FFFF0000' } }; // Red
-      
-      if (netAmount >= 0) {
-        netRow.getCell(5).font = { bold: true, color: { argb: 'FF006100' } }; // Green
-      } else {
-        netRow.getCell(5).font = { bold: true, color: { argb: 'FFFF0000' } }; // Red
-      }
-      
-      // Add auto-filter to header row
-      worksheet.autoFilter = {
-        from: { row: 1, column: 1 },
-        to: { row: 1, column: 7 }
-      };
-      
-      // Freeze the header row
-      worksheet.views = [
-        { state: 'frozen', xSplit: 0, ySplit: 1, activeCell: 'A2' }
-      ];
-      
-      // Add a summary sheet with more analysis
-      if (transactions.length > 0) {
-        const summarySheet = workbook.addWorksheet('Summary', {
-          properties: { tabColor: { argb: 'FF00B050' } }
-        });
-        
-        // Add title
-        const titleRow = summarySheet.addRow(['Transaction Summary']);
-        titleRow.font = { size: 16, bold: true };
-        summarySheet.mergeCells(titleRow.number, 1, titleRow.number, 5);
-        titleRow.getCell(1).alignment = { horizontal: 'center' };
-        
-        // Add generated date
-        summarySheet.addRow(['Generated on:', new Date().toLocaleDateString()]);
-        summarySheet.addRow([`Date Range: ${filters?.startDate || 'All'} to ${filters?.endDate || 'All'}`]);
-        
-        summarySheet.addRow([]); // Spacing
-        
-        // Add summary statistics
-        summarySheet.addRow(['Total Transactions:', transactions.length]);
-        summarySheet.addRow(['Total Income:', totalIncome]);
-        summarySheet.addRow(['Total Expenses:', totalExpense]);
-        summarySheet.addRow(['Net Amount:', netAmount]);
-        
-        // Style amount cells
-        for (let i = 5; i <= 7; i++) {
-          const cell = summarySheet.getCell(`B${i}`);
-          cell.numFmt = `_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)`;
-        }
-        
-        // Add transactions by category analysis
-        summarySheet.addRow([]); // Spacing
-        
-        const categoryHeader = summarySheet.addRow(['Transactions by Category']);
-        categoryHeader.font = { size: 14, bold: true };
-        summarySheet.mergeCells(categoryHeader.number, 1, categoryHeader.number, 5);
-        categoryHeader.getCell(1).alignment = { horizontal: 'center' };
-        
-        // Add category headers
-        const categoryColumns = summarySheet.addRow(['Category', 'Income', 'Expenses', 'Net', 'Count']);
-        categoryColumns.font = { bold: true };
-        categoryColumns.eachCell((cell) => {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFD9E1F2' }
-          };
-          cell.border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' }
-          };
-        });
-        
-        // Group transactions by category
-        const categoryData = {};
-        
-        transactions.forEach(t => {
-          const category = t.category_name || 'Uncategorized';
-          
-          if (!categoryData[category]) {
-            categoryData[category] = {
-              income: 0,
-              expense: 0,
-              net: 0,
-              count: 0
-            };
-          }
-          
-          if (t.transaction_type === 'income') {
-            categoryData[category].income += t.amount;
-          } else if (t.transaction_type === 'expense') {
-            categoryData[category].expense += t.amount; // amount is already negative
-          }
-          
-          categoryData[category].count++;
-        });
-        
-        // Calculate net for each category and add rows
-        Object.entries(categoryData)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .forEach(([category, data]) => {
-            data.net = data.income + data.expense; // expense is already negative
-            
-            const row = summarySheet.addRow([
-              category,
-              data.income,
-              data.expense,
-              data.net,
-              data.count
-            ]);
-            
-            // Style amount cells
-            for (let col = 2; col <= 4; col++) {
-              const cell = row.getCell(col);
-              cell.numFmt = `_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)`;
-            }
-          });
-        
-        // Set column widths
-        summarySheet.columns = [
-          { width: 20 }, // Category
-          { width: 12 }, // Income
-          { width: 12 }, // Expenses
-          { width: 12 }, // Net
-          { width: 8 }  // Count
-        ];
-      }
-      
-      // Write to file
-      await workbook.xlsx.writeFile(filePath);
-      
-      return {
-        success: true,
-        path: filePath,
-        count: transactions.length
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  });
-  
   console.log('Import/Export IPC handlers registered');
 }
+
+let mainWindow;
+
+function createWindow() {
+  // Initialize database
+  initDatabase();
+  
+  // Set up IPC handlers
+  setupAccountHandlers();
+  setupTransactionHandlers();
+  setupCategoryHandlers();
+  setupBudgetHandlers();
+  setupImportExportHandlers();
+  
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'electron', 'preload.js')
+    }
+  });
+
+  // Load from dist directory for production
+  mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+  
+  // Only show DevTools in development mode
+  if (config.showDevTools) {
+    mainWindow.webContents.openDevTools();
+  }
+  
+  // Add environment indicator to window title
+  mainWindow.setTitle('Personal Finance Manager (Production)');
+}
+
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    // Close database connection
+    if (db) db.close();
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
+
+// IPC handler to provide environment information to the renderer
+ipcMain.handle('app:getEnvironment', () => {
+  return {
+    environment: 'production',
+    dbPath: dbPath,
+    version: app.getVersion(),
+    appPath: app.getAppPath(),
+    userData: app.getPath('userData')
+  };
+});

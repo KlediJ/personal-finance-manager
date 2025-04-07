@@ -2,14 +2,16 @@
   "name": "personal-finance-manager",
   "version": "0.1.0",
   "description": "Cross-platform desktop application for tracking, analyzing, and managing personal finances",
-  "main": "./electron-dev.js",
+  "main": "main.js",
   "build": {
     "appId": "com.libri.personalfinancemanager",
     "productName": "Libri",
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "src/assets/**/*"
+      "src/assets/**/*",
+      "config.js",
+      "main.js"
     ],
     "directories": {
       "buildResources": "src/assets"
@@ -35,7 +37,12 @@
     "build:webpack": "webpack --config webpack.config.js",
     "build:electron": "tsc -p electron/tsconfig-electron.json",
     "build": "npm run build:webpack && npm run build:electron",
-    "package": "electron-builder"
+    "build:prod": "cross-env NODE_ENV=production webpack --config webpack.prod.js && npm run build:electron && copy main-prod.js main.js",
+    "package": "electron-builder",
+    "package:win": "electron-builder --win",
+    "package:mac": "electron-builder --mac",
+    "package:linux": "electron-builder --linux",
+    "dist": "npm run build:prod && npm run package"
   },
   "author": "",
   "license": "MIT",

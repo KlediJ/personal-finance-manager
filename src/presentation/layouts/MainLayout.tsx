@@ -24,6 +24,8 @@ import CategoryIcon from '@mui/icons-material/Category';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { useNavigate, useLocation } from 'react-router-dom';
+// Use a static image path for now 
+// Will use import once webpack is properly configured
 
 const drawerWidth = 240;
 
@@ -50,9 +52,20 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   const drawer = (
     <div>
-      <Toolbar sx={{ justifyContent: 'center' }}>
+      <Toolbar sx={{ justifyContent: 'center', flexDirection: 'column', gap: 1 }}>
+        <Box
+          component="img"
+          sx={{ 
+            height: 50, 
+            width: 'auto',
+            marginBottom: 1,
+            maxWidth: '100%'
+          }}
+          alt="Libri Finance Logo"
+          src="/assets/images/logo.png"
+        />
         <Typography variant="h6" noWrap component="div">
-        Personal Finance Manager
+        Libri
         </Typography>
       </Toolbar>
       <Divider />
@@ -75,28 +88,29 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
-      <AppBar
-        position="fixed"
-        sx={{
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: `${drawerWidth}px` },
+      {/* Mobile-only menu button */}
+      <Box
+        sx={{ 
+          display: { xs: 'block', sm: 'none' },
+          position: 'fixed',
+          top: '10px',
+          left: '10px',
+          zIndex: 1100
         }}
       >
-        <Toolbar>
-          <IconButton
-            color="inherit"
-            aria-label="open drawer"
-            edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { sm: 'none' } }}
-          >
-            <MenuIcon />
-          </IconButton>
-          <Typography variant="h6" noWrap component="div">
-            Libri
-          </Typography>
-        </Toolbar>
-      </AppBar>
+        <IconButton
+          color="primary"
+          aria-label="open drawer"
+          edge="start"
+          onClick={handleDrawerToggle}
+          sx={{ 
+            backgroundColor: 'rgba(255,255,255,0.8)',
+            '&:hover': { backgroundColor: 'rgba(255,255,255,0.9)' }
+          }}
+        >
+          <MenuIcon />
+        </IconButton>
+      </Box>
       <Box
         component="nav"
         sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
@@ -132,7 +146,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           flexGrow: 1, 
           p: 3, 
           width: { sm: `calc(100% - ${drawerWidth}px)` },
-          marginTop: '64px'  // AppBar height
+          marginTop: '10px'  // Reduced since AppBar is gone
         }}
       >
         {children}

@@ -3,6 +3,27 @@
   "version": "0.1.0",
   "description": "Cross-platform desktop application for tracking, analyzing, and managing personal finances",
   "main": "./electron-dev.js",
+  "build": {
+    "appId": "com.libri.personalfinancemanager",
+    "productName": "Libri",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "src/assets/**/*"
+    ],
+    "directories": {
+      "buildResources": "src/assets"
+    },
+    "mac": {
+      "icon": "src/assets/images/icon.png"
+    },
+    "win": {
+      "icon": "src/assets/images/icon.png"
+    },
+    "linux": {
+      "icon": "src/assets/images/icon.png"
+    }
+  },
   "scripts": {
     "start": "concurrently \"npm run start:webpack\" \"npm run start:electron\"",
     "start:webpack": "webpack serve --config webpack.config.js",
@@ -25,6 +46,7 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "concurrently": "^9.1.2",
+    "copy-webpack-plugin": "^13.0.0",
     "cross-env": "^7.0.3",
     "css-loader": "^7.1.2",
     "electron": "^35.0.2",

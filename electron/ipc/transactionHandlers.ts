@@ -1,9 +1,12 @@
 import { ipcMain } from 'electron';
 import { DatabaseManager } from '../../src/data-storage/database/DatabaseManager';
 import { Transaction } from '../../src/data-storage/models/Transaction';
+import { AutoCategorizer } from '../../src/ai/AutoCategorizer';
 
 export function setupTransactionHandlers(): void {
   const transactionRepository = DatabaseManager.getInstance().getTransactionRepository();
+  const categoryRepository = DatabaseManager.getInstance().getCategoryRepository();
+  const categorizer = AutoCategorizer.getInstance();
 
   // Get all transactions
   ipcMain.handle('transactions:getAll', async () => {
@@ -68,6 +71,15 @@ export function setupTransactionHandlers(): void {
   // Create transaction
   ipcMain.handle('transactions:create', async (_, transaction: Transaction) => {
     try {
+      if (!transaction.category_id && transaction.description) {
+        const prediction = categorizer.predict(transaction.description);
+        if (prediction && prediction.probability >= 0.6) {
+          const cat = categoryRepository.getByName(prediction.label);
+          if (cat?.category_id) {
+            transaction.category_id = cat.category_id;
+          }
+        }
+      }
       const id = transactionRepository.create(transaction);
       return { id, success: true };
     } catch (error) {

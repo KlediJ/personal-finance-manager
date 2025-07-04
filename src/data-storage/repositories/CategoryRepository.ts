@@ -43,6 +43,17 @@ export class CategoryRepository extends BaseRepository<Category> {
   public getSubcategories(parentId: number): Category[] {
     return this.findBy('parent_category_id', parentId);
   }
+
+  /**
+   * Get a category by its name (case-insensitive)
+   */
+  public getByName(name: string): Category | null {
+    const stmt = this.db.prepare(
+      `SELECT * FROM ${this.tableName} WHERE lower(name) = lower(?) LIMIT 1`
+    );
+    const row = stmt.get(name);
+    return row ? this.mapToEntity(row) : null;
+  }
   
   /**
    * Get category with its subcategories

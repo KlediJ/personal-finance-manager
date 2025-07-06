@@ -34,6 +34,7 @@
     "rebuild-sqlite": "node rebuild-sqlite.js",
     "db:reset": "node scripts/reset-db.js",
     "db:setup": "npm run rebuild-sqlite && npm run db:reset",
+    "train:model": "ts-node --transpile-only scripts/train-category-model.ts",
     "build:webpack": "webpack --config webpack.config.js",
     "build:electron": "tsc -p electron/tsconfig-electron.json",
     "build": "npm run build:webpack && npm run build:electron",

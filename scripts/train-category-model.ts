@@ -1,8 +1,9 @@
-import Database from 'better-sqlite3';
-import fs from 'fs';
-import path from 'path';
-import { app } from 'electron';
-import { NaiveBayesCategorizer } from '../src/ai/NaiveBayesCategorizer';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Database = require('better-sqlite3') as typeof import('better-sqlite3');
+const fs = require('fs');
+const path = require('path');
+const { app } = require('electron');
+const { NaiveBayesCategorizer } = require('../src/ai/NaiveBayesCategorizer');
 
 async function main() {
   await app.whenReady();

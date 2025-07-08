@@ -19,7 +19,7 @@ import {
   MenuItem
 } from '@mui/material';
 import { Transaction } from '../../../../data-storage/models/Transaction';
-import { Category } from '../../../../data-storage/models/Category';
+import type { Category } from '../../../../data-storage/models/Category';
 
 interface DataPreviewStepProps {
   validatedData: (Transaction & { suggested_category?: string })[];

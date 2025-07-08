@@ -17,6 +17,7 @@ import FileSelectionStep from './ImportWizardSteps/FileSelectionStep';
 import ColumnMappingStep from './ImportWizardSteps/ColumnMappingStep';
 import DataPreviewStep from './ImportWizardSteps/DataPreviewStep';
 import ConfirmationStep from './ImportWizardSteps/ConfirmationStep';
+import { Category } from '../../data-storage/models/Category';
 
 interface ImportWizardProps {
   open: boolean;
@@ -47,6 +48,8 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{ success: boolean, count: number } | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categorizing, setCategorizing] = useState(false);
 
   // Reset wizard state when dialog opens/closes
   React.useEffect(() => {
@@ -66,6 +69,8 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
         setImportStats(null);
         setError(null);
         setImportResult(null);
+        setCategories([]);
+        setCategorizing(false);
       }, 300);
     }
   }, [open]);
@@ -175,6 +180,7 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
         setValidatedData(result.validTransactions);
         setValidationErrors(result.errors || []);
         setImportStats(result.stats);
+        await fetchCategorySuggestions(result.validTransactions);
       } else {
         // Use custom error message or default if no errors array is present
         setError(result.errors && result.errors.length > 0 ? 'Validation errors found' : 'Validation failed');
@@ -184,6 +190,29 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
       setError('Failed to validate import data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCategorySuggestions = async (transactions: any[]) => {
+    setCategorizing(true);
+    try {
+      const descriptions = transactions.map(t => t.description || '');
+      const res = await window.api.transactions.categorize(descriptions);
+      if (res.success && res.categories) {
+        const allCats = await window.api.categories.getAll();
+        setCategories(allCats);
+        const map = new Map(allCats.map(c => [c.name.toLowerCase(), c.category_id]));
+        const updated = transactions.map((t, idx) => {
+          const name = res.categories![idx];
+          const id = map.get(name.toLowerCase()) || null;
+          return { ...t, category_id: id, suggested_category: name };
+        });
+        setValidatedData(updated);
+      }
+    } catch (err) {
+      console.error('Error fetching category suggestions:', err);
+    } finally {
+      setCategorizing(false);
     }
   };
 
@@ -220,8 +249,13 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
     }
   };
 
+  const handleCategoryChange = (index: number, categoryId: number | null) => {
+    setValidatedData(prev => prev.map((t, i) => i === index ? { ...t, category_id: categoryId } : t));
+  };
+
   // Handle next button
   const handleNext = async () => {
+    if (loading || categorizing) return;
     if (activeStep === 1) {
       // Validate data before moving to preview step
       await validateData();
@@ -246,16 +280,15 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
   // Determine if next button should be disabled
   const isNextDisabled = () => {
     if (activeStep === 0) {
-      return !filePath;
+      return !filePath || loading || categorizing;
     }
     if (activeStep === 1) {
-      // Require mappings for essential fields
-      return !mappings['date'] || !mappings['amount'];
+      return loading || categorizing || !mappings['date'] || !mappings['amount'];
     }
     if (activeStep === 2) {
-      return validatedData.length === 0;
+      return loading || categorizing || validatedData.length === 0;
     }
-    return false;
+    return loading || categorizing;
   };
 
   return (
@@ -276,11 +309,11 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
           </Alert>
         )}
 
-        {loading ? (
+        {loading || categorizing ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
             <CircularProgress sx={{ mb: 2 }} />
             <Typography variant="body1">
-              {activeStep === 1 ? 'Validating data...' : 'Importing transactions...'}
+              {categorizing ? 'Generating category suggestions...' : activeStep === 1 ? 'Validating data...' : 'Importing transactions...'}
             </Typography>
           </Box>
         ) : (
@@ -308,6 +341,8 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
                 validatedData={validatedData}
                 validationErrors={validationErrors}
                 stats={importStats}
+                categories={categories}
+                onCategoryChange={handleCategoryChange}
               />
             )}
             

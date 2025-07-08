@@ -14,20 +14,27 @@ import {
   Tabs,
   Tab,
   Chip,
-  Stack
+  Stack,
+  Select,
+  MenuItem
 } from '@mui/material';
 import { Transaction } from '../../../../data-storage/models/Transaction';
+import { Category } from '../../../../data-storage/models/Category';
 
 interface DataPreviewStepProps {
-  validatedData: Transaction[];
+  validatedData: (Transaction & { suggested_category?: string })[];
   validationErrors: any[];
   stats: { total: number, valid: number, invalid: number } | null;
+  categories: Category[];
+  onCategoryChange: (index: number, categoryId: number | null) => void;
 }
 
 const DataPreviewStep: React.FC<DataPreviewStepProps> = ({
   validatedData,
   validationErrors,
-  stats
+  stats,
+  categories,
+  onCategoryChange
 }) => {
   const [tabValue, setTabValue] = useState(0);
 
@@ -105,6 +112,7 @@ const DataPreviewStep: React.FC<DataPreviewStepProps> = ({
                   <TableRow>
                     <TableCell>Date</TableCell>
                     <TableCell>Description</TableCell>
+                    <TableCell>Category</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell align="right">Amount</TableCell>
                     <TableCell>Status</TableCell>
@@ -117,8 +125,23 @@ const DataPreviewStep: React.FC<DataPreviewStepProps> = ({
                         <TableCell>{formatDate(transaction.date)}</TableCell>
                         <TableCell>{transaction.description || 'No description'}</TableCell>
                         <TableCell>
-                          <Chip 
-                            label={getTransactionTypeLabel(transaction.transaction_type)} 
+                          <Select
+                            value={transaction.category_id ? transaction.category_id.toString() : ''}
+                            onChange={(e) => onCategoryChange(index, e.target.value === '' ? null : parseInt(e.target.value))}
+                            size="small"
+                            displayEmpty
+                          >
+                            <MenuItem value="">
+                              <em>{transaction.suggested_category || 'None'}</em>
+                            </MenuItem>
+                            {categories.map((cat) => (
+                              <MenuItem key={cat.category_id} value={cat.category_id!.toString()}>{cat.name}</MenuItem>
+                            ))}
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={getTransactionTypeLabel(transaction.transaction_type)}
                             size="small"
                             color={
                               transaction.transaction_type === 'income' ? 'success' :
@@ -127,10 +150,10 @@ const DataPreviewStep: React.FC<DataPreviewStepProps> = ({
                             }
                           />
                         </TableCell>
-                        <TableCell align="right" sx={{ 
-                          color: transaction.transaction_type === 'expense' ? 'error.main' : 
-                                 transaction.transaction_type === 'income' ? 'success.main' : 
-                                 'inherit' 
+                        <TableCell align="right" sx={{
+                          color: transaction.transaction_type === 'expense' ? 'error.main' :
+                                 transaction.transaction_type === 'income' ? 'success.main' :
+                                 'inherit'
                         }}>
                           {formatAmount(transaction.amount)}
                         </TableCell>
@@ -139,7 +162,7 @@ const DataPreviewStep: React.FC<DataPreviewStepProps> = ({
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} align="center">
+                      <TableCell colSpan={6} align="center">
                         No valid transactions found
                       </TableCell>
                     </TableRow>

@@ -378,6 +378,29 @@ function setupTransactionHandlers() {
     const stmt = db.prepare('SELECT * FROM transactions WHERE status = ? ORDER BY date DESC');
     return stmt.all(status);
   });
+
+  ipcMain.handle('transactions:categorize', async (_, descriptions) => {
+    try {
+      const results = [];
+      for (const description of descriptions) {
+        const res = await fetch('http://localhost:11434/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'llama3',
+            prompt: `Categorize this transaction: "${description}". Respond with only the category name.`,
+            stream: false
+          })
+        });
+        const data = await res.json();
+        results.push((data.response || '').trim());
+      }
+      return { success: true, categories: results };
+    } catch (error) {
+      console.error('Error categorizing transactions:', error);
+      return { success: false, error: error.message };
+    }
+  });
   
   console.log('Transaction IPC handlers registered');
 }

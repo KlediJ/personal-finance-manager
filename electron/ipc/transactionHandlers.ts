@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { DatabaseManager } from '../../src/data-storage/database/DatabaseManager';
 import { Transaction } from '../../src/data-storage/models/Transaction';
+import { categorizeBatch } from '../ai/categorizationService';
 
 export function setupTransactionHandlers(): void {
   const transactionRepository = DatabaseManager.getInstance().getTransactionRepository();
@@ -125,6 +126,17 @@ export function setupTransactionHandlers(): void {
     } catch (error) {
       console.error(`Error getting transactions with status ${status}:`, error);
       throw error;
+    }
+  });
+
+  // Get category suggestions using Llama model
+  ipcMain.handle('transactions:categorize', async (_, descriptions: string[]) => {
+    try {
+      const categories = await categorizeBatch(descriptions);
+      return { success: true, categories };
+    } catch (error) {
+      console.error('Error categorizing transactions:', error);
+      return { success: false, error: (error as Error).message };
     }
   });
 }

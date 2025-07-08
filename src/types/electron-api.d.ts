@@ -36,6 +36,7 @@ declare global {
         getByCategory: (categoryId: number) => Promise<Transaction[]>;
         getByType: (type: string) => Promise<Transaction[]>;
         getByStatus: (status: string) => Promise<Transaction[]>;
+        categorize: (descriptions: string[]) => Promise<{ success: boolean; categories?: string[]; error?: string }>;
       };
       categories: {
         getAll: () => Promise<Category[]>;

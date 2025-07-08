@@ -36,7 +36,8 @@ contextBridge.exposeInMainWorld('api', {
     bulkDelete: (ids: number[]) => ipcRenderer.invoke('transactions:bulkDelete', ids),
     getByCategory: (categoryId: number) => ipcRenderer.invoke('transactions:getByCategory', categoryId),
     getByType: (type: string) => ipcRenderer.invoke('transactions:getByType', type),
-    getByStatus: (status: string) => ipcRenderer.invoke('transactions:getByStatus', status)
+    getByStatus: (status: string) => ipcRenderer.invoke('transactions:getByStatus', status),
+    categorize: (descriptions: string[]) => ipcRenderer.invoke('transactions:categorize', descriptions)
   },
   categories: {
     getAll: () => ipcRenderer.invoke('categories:getAll'),

@@ -17,7 +17,7 @@ import FileSelectionStep from './ImportWizardSteps/FileSelectionStep';
 import ColumnMappingStep from './ImportWizardSteps/ColumnMappingStep';
 import DataPreviewStep from './ImportWizardSteps/DataPreviewStep';
 import ConfirmationStep from './ImportWizardSteps/ConfirmationStep';
-import { Category } from '../../data-storage/models/Category';
+import { Category } from '../../../data-storage/models/Category';
 
 interface ImportWizardProps {
   open: boolean;

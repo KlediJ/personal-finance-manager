@@ -97,6 +97,20 @@ declare global {
           error?: string
         }>;
       };
+      
+      ai: {
+        getStatus: () => Promise<{ status: string; message: string; features?: any; error?: string }>;
+        updateContext: () => Promise<{ success: boolean; message?: string; error?: string }>;
+        clearModels: () => Promise<{ success: boolean; message?: string; error?: string }>;
+        categorizeTransaction: (transaction: any) => Promise<{ success: boolean; predictions?: any[]; error?: string }>;
+        batchCategorizeTransactions: (transactions: any[]) => Promise<{ success: boolean; results?: any; error?: string }>;
+        learnFromFeedback: (feedback: any) => Promise<{ success: boolean; message?: string; error?: string }>;
+        processQuery: (query: string) => Promise<{ success: boolean; result?: any; error?: string }>;
+        getUncategorizedTransactions: () => Promise<{ success: boolean; transactions?: any[]; error?: string }>;
+        getStatistics: () => Promise<{ success: boolean; stats?: any; error?: string }>;
+        onCategorizationProgress: (callback: (progress: number) => void) => void;
+        removeCategorizationProgressListener: () => void;
+      };
     };
   }
 }

@@ -102,5 +102,36 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('export:transactionsToCSV', options),
     transactionsToExcel: (options: { filePath: string, filters?: any }) => 
       ipcRenderer.invoke('export:transactionsToExcel', options)
+  },
+  
+  // AI Services
+  ai: {
+    // Status and initialization
+    getStatus: () => ipcRenderer.invoke('ai:getStatus'),
+    updateContext: () => ipcRenderer.invoke('ai:updateContext'),
+    clearModels: () => ipcRenderer.invoke('ai:clearModels'),
+    
+    // Transaction categorization
+    categorizeTransaction: (transaction: Transaction) => 
+      ipcRenderer.invoke('ai:categorizeTransaction', transaction),
+    batchCategorizeTransactions: (transactions: Transaction[]) => 
+      ipcRenderer.invoke('ai:batchCategorizeTransactions', transactions),
+    learnFromFeedback: (feedback: any) => 
+      ipcRenderer.invoke('ai:learnFromFeedback', feedback),
+    
+    // Query processing
+    processQuery: (query: string) => ipcRenderer.invoke('ai:processQuery', query),
+    
+    // Data helpers
+    getUncategorizedTransactions: () => ipcRenderer.invoke('ai:getUncategorizedTransactions'),
+    getStatistics: () => ipcRenderer.invoke('ai:getStatistics'),
+    
+    // Progress listeners
+    onCategorizationProgress: (callback: (progress: number) => void) => {
+      ipcRenderer.on('ai:categorization-progress', (event, progress) => callback(progress));
+    },
+    removeCategorizationProgressListener: () => {
+      ipcRenderer.removeAllListeners('ai:categorization-progress');
+    }
   }
 });

@@ -23,6 +23,7 @@ import ReceiptIcon from '@mui/icons-material/Receipt';
 import CategoryIcon from '@mui/icons-material/Category';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import SettingsIcon from '@mui/icons-material/Settings';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useNavigate, useLocation } from 'react-router-dom';
 // Import the logo properly
 import logoImage from '../../assets/images/logo.png';
@@ -47,6 +48,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     { text: 'Account Summary', icon: <SummarizeIcon />, path: '/account-summary' },
     { text: 'Transactions', icon: <ReceiptIcon />, path: '/transactions' },
     { text: 'Budget', icon: <MonetizationOnIcon />, path: '/budget' },
+    { text: 'AI Assistant', icon: <SmartToyIcon />, path: '/ai' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];
 

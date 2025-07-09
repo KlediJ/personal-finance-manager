@@ -5,6 +5,7 @@ import { setupAccountHandlers } from './ipc/accountHandlers';
 import { setupTransactionHandlers } from './ipc/transactionHandlers';
 import { setupCategoryHandlers } from './ipc/categoryHandlers';
 import { setupBudgetHandlers } from './ipc/budgetHandlers';
+import { initializeAIHandlers, cleanupAIServices } from './ipc/aiHandlers';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -25,6 +26,8 @@ async function createWindow() {
     console.log('✓ Category handlers set up');
     setupBudgetHandlers();
     console.log('✓ Budget handlers set up');
+    initializeAIHandlers();
+    console.log('✓ AI handlers set up');
     
     console.log('All IPC handlers initialized successfully');
   } catch (error) {
@@ -69,6 +72,8 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   // On macOS, applications keep running until explicitly quit
   if (process.platform !== 'darwin') {
+    // Cleanup AI services
+    cleanupAIServices();
     // Close database connection
     DatabaseManager.getInstance().shutdown();
     app.quit();

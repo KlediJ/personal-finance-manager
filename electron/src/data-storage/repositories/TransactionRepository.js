@@ -17,24 +17,46 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
             transaction_type: row.transaction_type,
             status: row.status,
             payee_id: row.payee_id,
+            payee_name: row.payee_name,
             created_at: row.created_at,
             updated_at: row.updated_at
         };
     }
     /**
+     * Get all transactions with payee information
+     */
+    getAll() {
+        const query = `
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+        return this.runQuery(query, []);
+    }
+    /**
      * Get transactions by account ID
      */
     getByAccountId(accountId) {
-        return this.findBy('account_id', accountId);
+        const query = `
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.account_id = ?
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+        return this.runQuery(query, [accountId]);
     }
     /**
      * Get transactions by date range
      */
     getByDateRange(startDate, endDate) {
         const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE date >= ? AND date <= ?
-      ORDER BY date DESC
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.date >= ? AND t.date <= ?
+      ORDER BY t.date DESC, t.transaction_id DESC
     `;
         return this.runQuery(query, [startDate, endDate]);
     }
@@ -43,8 +65,10 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
      */
     getRecent(limit) {
         const query = `
-      SELECT * FROM ${this.tableName}
-      ORDER BY date DESC, transaction_id DESC
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      ORDER BY t.date DESC, t.transaction_id DESC
       LIMIT ?
     `;
         return this.runQuery(query, [limit]);
@@ -54,9 +78,11 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
      */
     searchByDescription(term) {
         const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE description LIKE ?
-      ORDER BY date DESC
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.description LIKE ?
+      ORDER BY t.date DESC, t.transaction_id DESC
     `;
         return this.runQuery(query, [`%${term}%`]);
     }
@@ -64,19 +90,40 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
      * Get transactions by category
      */
     getByCategory(categoryId) {
-        return this.findBy('category_id', categoryId);
+        const query = `
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.category_id = ?
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+        return this.runQuery(query, [categoryId]);
     }
     /**
      * Get transactions by type (income, expense, transfer)
      */
     getByType(type) {
-        return this.findBy('transaction_type', type);
+        const query = `
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.transaction_type = ?
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+        return this.runQuery(query, [type]);
     }
     /**
      * Get transactions by status (pending, cleared, reconciled)
      */
     getByStatus(status) {
-        return this.findBy('status', status);
+        const query = `
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.status = ?
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+        return this.runQuery(query, [status]);
     }
     /**
      * Get income/expense summary by month

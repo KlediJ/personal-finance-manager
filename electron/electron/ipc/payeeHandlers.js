@@ -54,6 +54,30 @@ function setupPayeeHandlers() {
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
         }
     });
+    // Create payee if it doesn't exist
+    electron_1.ipcMain.handle('payees:createIfNotExists', async (_, payee) => {
+        try {
+            console.log('Creating payee if not exists with data:', JSON.stringify(payee, null, 2));
+            const result = payeeRepository.createIfNotExists(payee);
+            console.log('Payee creation result:', result);
+            return { ...result, success: true };
+        }
+        catch (error) {
+            console.error('Error creating payee if not exists:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+    // Find payee by name
+    electron_1.ipcMain.handle('payees:findByName', async (_, name) => {
+        try {
+            const payee = payeeRepository.findByName(name);
+            return { payee, success: true };
+        }
+        catch (error) {
+            console.error('Error finding payee by name:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
     // Update payee
     electron_1.ipcMain.handle('payees:update', async (_, id, payee) => {
         try {

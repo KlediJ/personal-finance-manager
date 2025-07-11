@@ -17,16 +17,37 @@ export class TransactionRepository extends BaseRepository<Transaction> {
       transaction_type: row.transaction_type as TransactionType,
       status: row.status as TransactionStatus,
       payee_id: row.payee_id,
+      payee_name: row.payee_name,
       created_at: row.created_at,
       updated_at: row.updated_at
     };
   }
   
   /**
+   * Get all transactions with payee information
+   */
+  public getAll(): Transaction[] {
+    const query = `
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+    return this.runQuery(query, []);
+  }
+
+  /**
    * Get transactions by account ID
    */
   public getByAccountId(accountId: number): Transaction[] {
-    return this.findBy('account_id', accountId);
+    const query = `
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.account_id = ?
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+    return this.runQuery(query, [accountId]);
   }
   
   /**
@@ -34,9 +55,11 @@ export class TransactionRepository extends BaseRepository<Transaction> {
    */
   public getByDateRange(startDate: string, endDate: string): Transaction[] {
     const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE date >= ? AND date <= ?
-      ORDER BY date DESC
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.date >= ? AND t.date <= ?
+      ORDER BY t.date DESC, t.transaction_id DESC
     `;
     return this.runQuery(query, [startDate, endDate]);
   }
@@ -46,8 +69,10 @@ export class TransactionRepository extends BaseRepository<Transaction> {
    */
   public getRecent(limit: number): Transaction[] {
     const query = `
-      SELECT * FROM ${this.tableName}
-      ORDER BY date DESC, transaction_id DESC
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      ORDER BY t.date DESC, t.transaction_id DESC
       LIMIT ?
     `;
     return this.runQuery(query, [limit]);
@@ -58,9 +83,11 @@ export class TransactionRepository extends BaseRepository<Transaction> {
    */
   public searchByDescription(term: string): Transaction[] {
     const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE description LIKE ?
-      ORDER BY date DESC
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.description LIKE ?
+      ORDER BY t.date DESC, t.transaction_id DESC
     `;
     return this.runQuery(query, [`%${term}%`]);
   }
@@ -69,21 +96,42 @@ export class TransactionRepository extends BaseRepository<Transaction> {
    * Get transactions by category
    */
   public getByCategory(categoryId: number): Transaction[] {
-    return this.findBy('category_id', categoryId);
+    const query = `
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.category_id = ?
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+    return this.runQuery(query, [categoryId]);
   }
   
   /**
    * Get transactions by type (income, expense, transfer)
    */
   public getByType(type: string): Transaction[] {
-    return this.findBy('transaction_type', type);
+    const query = `
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.transaction_type = ?
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+    return this.runQuery(query, [type]);
   }
   
   /**
    * Get transactions by status (pending, cleared, reconciled)
    */
   public getByStatus(status: string): Transaction[] {
-    return this.findBy('status', status);
+    const query = `
+      SELECT t.*, p.name as payee_name 
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.status = ?
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+    return this.runQuery(query, [status]);
   }
   
   /**

@@ -173,6 +173,26 @@ class PayeeRepository extends BaseRepository_1.BaseRepository {
             details: this.getPayeeDetails(row.payee_id)
         }));
     }
+    // Find payee by name (case-insensitive)
+    findByName(name) {
+        const query = `SELECT * FROM payees WHERE LOWER(name) = LOWER(?) LIMIT 1`;
+        const statement = this.db.prepare(query);
+        const row = statement.get(name);
+        if (!row)
+            return null;
+        const payee = this.mapToEntity(row);
+        payee.details = this.getPayeeDetails(payee.payee_id);
+        return payee;
+    }
+    // Create payee only if it doesn't exist (case-insensitive)
+    createIfNotExists(payee) {
+        const existing = this.findByName(payee.name);
+        if (existing) {
+            return { id: existing.payee_id, created: false };
+        }
+        const id = this.create(payee);
+        return { id, created: true };
+    }
 }
 exports.PayeeRepository = PayeeRepository;
 //# sourceMappingURL=PayeeRepository.js.map

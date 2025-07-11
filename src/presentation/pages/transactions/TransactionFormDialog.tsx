@@ -22,6 +22,7 @@ import {
 } from '../../../data-storage/models/Transaction';
 import { Account } from '../../../data-storage/models/Account';
 import { Category } from '../../../data-storage/models/Category';
+import { Payee } from '../../../data-storage/models/Payee';
 
 interface TransactionFormDialogProps {
   open: boolean;
@@ -55,6 +56,7 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
   const [formValues, setFormValues] = useState<Transaction>(defaultTransaction);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [payees, setPayees] = useState<Payee[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -77,6 +79,10 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
         // Load categories
         const categoriesData = await window.api.categories.getAll();
         setCategories(categoriesData);
+        
+        // Load payees
+        const payeesData = await window.api.payees.getAll();
+        setPayees(payeesData);
         
       } catch (error) {
         console.error('Error loading form data:', error);
@@ -154,6 +160,11 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
       setFormValues({
         ...formValues,
         [name]: parseInt(value)
+      });
+    } else if (name === 'payee_id') {
+      setFormValues({
+        ...formValues,
+        [name]: value === 'null' ? null : parseInt(value)
       });
     } else {
       setFormValues({ ...formValues, [name]: value });
@@ -325,6 +336,36 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
                     {category.name}
                   </MenuItem>
                 ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>Payee</InputLabel>
+              <Select
+                name="payee_id"
+                value={formValues.payee_id === null || formValues.payee_id === undefined 
+                  ? 'null' 
+                  : `${formValues.payee_id}`}
+                onChange={handleSelectChange}
+                label="Payee"
+                disabled={loading}
+              >
+                <MenuItem value="null">
+                  <em>No Payee</em>
+                </MenuItem>
+                {payees.length === 0 && !loading ? (
+                  <MenuItem value="" disabled>
+                    No payees found
+                  </MenuItem>
+                ) : (
+                  payees.map(payee => (
+                    <MenuItem key={payee.payee_id} value={payee.payee_id?.toString()}>
+                      {payee.name}
+                    </MenuItem>
+                  ))
+                )}
               </Select>
             </FormControl>
           </Grid>

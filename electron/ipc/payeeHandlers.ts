@@ -58,6 +58,32 @@ export function setupPayeeHandlers(): void {
     }
   });
 
+  // Create payee if it doesn't exist
+  ipcMain.handle('payees:createIfNotExists', async (_, payee: Payee) => {
+    try {
+      console.log('Creating payee if not exists with data:', JSON.stringify(payee, null, 2));
+      
+      const result = payeeRepository.createIfNotExists(payee);
+      console.log('Payee creation result:', result);
+      
+      return { ...result, success: true };
+    } catch (error) {
+      console.error('Error creating payee if not exists:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // Find payee by name
+  ipcMain.handle('payees:findByName', async (_, name: string) => {
+    try {
+      const payee = payeeRepository.findByName(name);
+      return { payee, success: true };
+    } catch (error) {
+      console.error('Error finding payee by name:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
   // Update payee
   ipcMain.handle('payees:update', async (_, id: number, payee: Payee) => {
     try {

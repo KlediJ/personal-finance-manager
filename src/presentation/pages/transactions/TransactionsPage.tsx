@@ -594,6 +594,7 @@ const TransactionsPage: React.FC = () => {
                 </TableCell>
                 <TableCell>Date</TableCell>
                 <TableCell>Description</TableCell>
+                <TableCell>Payee</TableCell>
                 <TableCell>Account</TableCell>
                 <TableCell>Category</TableCell>
                 <TableCell>Type</TableCell>
@@ -605,7 +606,7 @@ const TransactionsPage: React.FC = () => {
             <TableBody>
               {transactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center">
+                  <TableCell colSpan={10} align="center">
                     <Typography sx={{ py: 2 }}>
                       No transactions found. Try adjusting your filters or adding a new transaction.
                     </Typography>
@@ -622,6 +623,7 @@ const TransactionsPage: React.FC = () => {
                     </TableCell>
                     <TableCell>{formatDate(transaction.date)}</TableCell>
                     <TableCell>{transaction.description || 'No description'}</TableCell>
+                    <TableCell>{transaction.payee_name || 'No payee'}</TableCell>
                     <TableCell>{getAccountName(transaction.account_id)}</TableCell>
                     <TableCell>{getCategoryName(transaction.category_id ?? null)}</TableCell>
                     <TableCell>

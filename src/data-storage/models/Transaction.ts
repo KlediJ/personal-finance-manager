@@ -20,6 +20,7 @@ export interface Transaction {
   transaction_type: TransactionType;
   status: TransactionStatus;
   payee_id?: number | null;
+  payee_name?: string;
   created_at?: string;
   updated_at?: string;
 }

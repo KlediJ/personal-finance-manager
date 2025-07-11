@@ -41,6 +41,7 @@ interface TransactionCategorizerProps {
 interface UncategorizedTransaction extends Transaction {
   suggestedCategory?: Category;
   suggestedPayee?: string;
+  suggestedPayeeId?: number | null;
   confidence?: number;
   payeeConfidence?: number;
   isEditing?: boolean;
@@ -187,9 +188,9 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
       if (result.success) {
         console.log(`AI categorization completed successfully with ${Object.keys(result.results).length} results`);
         
-        // Update transactions with AI suggestions
-        setUncategorizedTransactions(prev => 
-          prev.map(transaction => {
+        // Update transactions with AI suggestions and auto-create payees
+        const updatedTransactions = await Promise.all(
+          uncategorizedTransactions.map(async transaction => {
             const aiResult = result.results[transaction.transaction_id!];
             if (aiResult) {
               // Extract category prediction
@@ -203,19 +204,47 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                 payeeConfidence: payeeExtraction?.confidence,
                 extractedInfo: aiResult.extractedInfo
               });
+
+              let suggestedPayeeId = null;
+              let suggestedPayeeName = payeeExtraction?.payee?.name;
+
+              // Auto-create payee if AI extracted one and confidence is high
+              if (payeeExtraction?.extracted && payeeExtraction.confidence > 0.7) {
+                try {
+                  // Use the new createIfNotExists method to prevent duplicates
+                  const payeeResult = await window.api.payees.createIfNotExists({
+                    name: payeeExtraction.payee.name,
+                    default_category_id: categoryPrediction?.category?.category_id || null
+                  });
+
+                  if (payeeResult.success) {
+                    suggestedPayeeId = payeeResult.id;
+                    if (payeeResult.created) {
+                      console.log(`Auto-created new payee: ${payeeExtraction.payee.name} with ID ${payeeResult.id}`);
+                    } else {
+                      console.log(`Using existing payee: ${payeeExtraction.payee.name} with ID ${payeeResult.id}`);
+                    }
+                  }
+                } catch (error) {
+                  console.error('Error auto-creating payee:', error);
+                }
+              }
               
               return {
                 ...transaction,
                 suggestedCategory: categoryPrediction?.category,
                 confidence: categoryPrediction?.confidence,
-                suggestedPayee: payeeExtraction?.payee?.name,
+                suggestedPayee: suggestedPayeeName,
+                suggestedPayeeId: suggestedPayeeId,
                 payeeConfidence: payeeExtraction?.confidence,
                 extractedInfo: aiResult.extractedInfo
-              };
+              } as UncategorizedTransaction;
             }
             return transaction;
           })
         );
+
+        setUncategorizedTransactions(updatedTransactions);
       } else {
         console.error('Error in AI categorization:', result.error);
         // Fallback to mock categorization
@@ -272,15 +301,22 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
     return categories[Math.floor(Math.random() * categories.length)];
   };
 
-  const handleApproveCategory = async (transactionId: number, categoryId: number) => {
+  const handleApproveCategory = async (transactionId: number, categoryId: number, payeeId?: number) => {
     try {
       const transaction = uncategorizedTransactions.find(t => t.transaction_id === transactionId);
       if (!transaction) return;
 
-      await window.api.transactions.update(transactionId, {
+      const updateData: any = {
         ...transaction,
         category_id: categoryId
-      });
+      };
+
+      // Include payee if provided
+      if (payeeId) {
+        updateData.payee_id = payeeId;
+      }
+
+      await window.api.transactions.update(transactionId, updateData);
 
       // Remove from uncategorized list
       setUncategorizedTransactions(prev => 
@@ -292,6 +328,42 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
       loadStats();
     } catch (error) {
       console.error('Error approving category:', error);
+    }
+  };
+
+  const handleCreateAndApprovePayee = async (transactionId: number, payeeName: string, categoryId?: number) => {
+    try {
+      const transaction = uncategorizedTransactions.find(t => t.transaction_id === transactionId);
+      if (!transaction) return;
+
+      // Use createIfNotExists to prevent duplicates
+      const payeeResult = await window.api.payees.createIfNotExists({
+        name: payeeName,
+        default_category_id: categoryId || null
+      });
+
+      if (payeeResult.success) {
+        // Update transaction with payee and category
+        const updateData: any = {
+          ...transaction,
+          payee_id: payeeResult.id
+        };
+
+        if (categoryId) {
+          updateData.category_id = categoryId;
+        }
+
+        await window.api.transactions.update(transactionId, updateData);
+
+        // Remove from uncategorized list
+        setUncategorizedTransactions(prev => 
+          prev.filter(t => t.transaction_id !== transactionId)
+        );
+        
+        loadStats();
+      }
+    } catch (error) {
+      console.error('Error creating payee:', error);
     }
   };
 
@@ -525,20 +597,50 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       {transaction.suggestedCategory && !transaction.isEditing && (
                         <>
                           <IconButton
                             size="small"
                             color="success"
                             onClick={() => handleApproveCategory(transaction.transaction_id!, transaction.suggestedCategory!.category_id!)}
+                            title="Approve Category Only"
                           >
                             <CheckIcon />
                           </IconButton>
+                          {transaction.suggestedPayee && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="success"
+                              onClick={() => {
+                                if (transaction.suggestedPayeeId) {
+                                  // Payee already exists, just approve both
+                                  handleApproveCategory(
+                                    transaction.transaction_id!, 
+                                    transaction.suggestedCategory!.category_id!,
+                                    transaction.suggestedPayeeId
+                                  );
+                                } else {
+                                  // Create new payee and approve both
+                                  handleCreateAndApprovePayee(
+                                    transaction.transaction_id!, 
+                                    transaction.suggestedPayee!, 
+                                    transaction.suggestedCategory?.category_id
+                                  );
+                                }
+                              }}
+                              sx={{ minWidth: 'auto', fontSize: '0.75rem', px: 1 }}
+                              title={transaction.suggestedPayeeId ? "Approve Category & Existing Payee" : "Create Payee & Approve Both"}
+                            >
+                              ✓ Both
+                            </Button>
+                          )}
                           <IconButton
                             size="small"
                             color="error"
                             onClick={() => handleRejectCategory(transaction.transaction_id!)}
+                            title="Reject Suggestions"
                           >
                             <CancelIcon />
                           </IconButton>
@@ -548,6 +650,7 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                         size="small"
                         color="primary"
                         onClick={() => handleEditCategory(transaction.transaction_id!)}
+                        title="Manual Edit"
                       >
                         <EditIcon />
                       </IconButton>

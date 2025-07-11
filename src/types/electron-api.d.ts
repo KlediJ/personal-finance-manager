@@ -57,6 +57,8 @@ declare global {
         getAll: () => Promise<Payee[]>;
         getById: (id: number) => Promise<Payee | null>;
         create: (payee: Payee) => Promise<{ id?: number, success: boolean, error?: string }>;
+        createIfNotExists: (payee: Payee) => Promise<{ id: number, created: boolean, success: boolean, error?: string }>;
+        findByName: (name: string) => Promise<{ payee: Payee | null, success: boolean, error?: string }>;
         update: (id: number, payee: Payee) => Promise<{ success: boolean, error?: string }>;
         delete: (id: number) => Promise<{ success: boolean, error?: string }>;
         getEnhanced: () => Promise<EnhancedPayee[]>;

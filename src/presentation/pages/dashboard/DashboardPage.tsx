@@ -17,7 +17,7 @@ import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import { useNavigate } from 'react-router-dom';
 import MonthlyChart from './charts/MonthlyChart';
 import CategoryBreakdown from './charts/CategoryBreakdown';
-import RecentTransactions from './RecentTransactions';
+import PayeeSummary from './PayeeSummary';
 import CategorySummary from './CategorySummary';
 
 const DashboardPage: React.FC = () => {
@@ -35,6 +35,7 @@ const DashboardPage: React.FC = () => {
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [categorySummary, setCategorySummary] = useState<any[]>([]);
+  const [payeeSummary, setPayeeSummary] = useState<any[]>([]);
   
   // Monthly totals
   const [currentMonthIncome, setCurrentMonthIncome] = useState<number>(0);
@@ -69,6 +70,7 @@ const DashboardPage: React.FC = () => {
       
       // Get recent transactions (last 10)
       const transactions = await window.api.transactions.getRecent(10);
+      console.log('Dashboard recent transactions:', transactions);
       setRecentTransactions(transactions);
       
       // Get current month's transactions for income/expense summary
@@ -77,6 +79,7 @@ const DashboardPage: React.FC = () => {
       const monthTransactions = await window.api.transactions.getByDateRange(
         currentMonthStart, currentMonthEnd
       );
+      console.log('Dashboard month transactions:', monthTransactions);
       
       // Calculate monthly totals
       let incomeTotal = 0;
@@ -110,6 +113,11 @@ const DashboardPage: React.FC = () => {
       // Process category breakdown
       const categoryData = processCategoryData(rangeTransactions);
       setCategorySummary(categoryData);
+      
+      // Process payee breakdown
+      const payeeData = processPayeeData(rangeTransactions);
+      console.log('Dashboard payee data:', payeeData);
+      setPayeeSummary(payeeData);
       
     } catch (err) {
       console.error('Error loading dashboard data:', err);
@@ -197,6 +205,36 @@ const DashboardPage: React.FC = () => {
     
     // Convert to array and sort by total (absolute value)
     return Array.from(categories.values())
+      .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+  };
+
+  // Process transaction data into payee breakdown
+  const processPayeeData = (transactions: any[]) => {
+    const payees = new Map();
+    
+    // Group transactions by payee
+    transactions.forEach((t: any) => {
+      // Skip transfers
+      if (t.transaction_type === 'transfer') return;
+      
+      const payeeName = t.payee_name || 'No payee';
+      
+      if (!payees.has(payeeName)) {
+        payees.set(payeeName, {
+          name: payeeName,
+          total: 0,
+          count: 0
+        });
+      }
+      
+      const payeeData = payees.get(payeeName);
+      payeeData.total += t.amount;
+      payeeData.count += 1;
+      payees.set(payeeName, payeeData);
+    });
+    
+    // Convert to array and sort by total (absolute value)
+    return Array.from(payees.values())
       .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   };
 
@@ -376,9 +414,9 @@ const DashboardPage: React.FC = () => {
             <CategorySummary data={categorySummary} transactions={recentTransactions} />
           </Grid>
 
-          {/* Recent Transactions */}
+          {/* Payee Summary */}
           <Grid item xs={12} md={7}>
-            <RecentTransactions transactions={recentTransactions} />
+            <PayeeSummary data={payeeSummary} transactions={recentTransactions} />
           </Grid>
         </Grid>
       )}

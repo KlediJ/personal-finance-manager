@@ -8,9 +8,7 @@ import {
   Container
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import CategoryIcon from '@mui/icons-material/Category';
-import AccountsPage from '../accounts/AccountsPage';
 import CategoriesPage from '../categories/CategoriesPage';
 
 interface TabPanelProps {
@@ -76,7 +74,6 @@ const SettingsPage: React.FC = () => {
           aria-label="settings tabs"
         >
           <Tab icon={<SettingsIcon />} label="General" />
-          <Tab icon={<AccountBalanceIcon />} label="Accounts" />
           <Tab icon={<CategoryIcon />} label="Categories" />
         </Tabs>
         
@@ -85,10 +82,6 @@ const SettingsPage: React.FC = () => {
         </TabPanel>
         
         <TabPanel value={tabValue} index={1}>
-          <AccountsPage inSettingsPage={true} />
-        </TabPanel>
-        
-        <TabPanel value={tabValue} index={2}>
           <CategoriesPage inSettingsPage={true} />
         </TabPanel>
       </Paper>

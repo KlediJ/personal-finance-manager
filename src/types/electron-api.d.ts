@@ -2,6 +2,10 @@ import { Account } from '../data-storage/models/Account';
 import { Transaction } from '../data-storage/models/Transaction';
 import { Category } from '../data-storage/models/Category';
 import { Budget } from '../data-storage/models/Budget';
+import { Payee, EnhancedPayee } from '../data-storage/models/Payee';
+import { RecurringBill, BillPayment, BillSummary } from '../data-storage/models/RecurringBill';
+import { LoanDetails, AmortizationSchedule, LoanSummary } from '../data-storage/models/LoanDetails';
+import { InterestExpense, InterestExpenseSummary, InterestExpenseType, CreditCardInterestAnalysis } from '../data-storage/models/InterestExpense';
 
 declare global {
   interface Window {
@@ -48,6 +52,16 @@ declare global {
         update: (id: number, category: Category) => Promise<{ success: boolean }>;
         delete: (id: number) => Promise<{ success: boolean }>;
       };
+      
+      payees: {
+        getAll: () => Promise<Payee[]>;
+        getById: (id: number) => Promise<Payee | null>;
+        create: (payee: Payee) => Promise<{ id?: number, success: boolean, error?: string }>;
+        update: (id: number, payee: Payee) => Promise<{ success: boolean, error?: string }>;
+        delete: (id: number) => Promise<{ success: boolean, error?: string }>;
+        getEnhanced: () => Promise<EnhancedPayee[]>;
+      };
+      
       database: {
         getStats: () => string;
       };
@@ -110,6 +124,90 @@ declare global {
         getStatistics: () => Promise<{ success: boolean; stats?: any; error?: string }>;
         onCategorizationProgress: (callback: (progress: number) => void) => void;
         removeCategorizationProgressListener: () => void;
+      };
+
+      // Bills Management
+      bills: {
+        getAll: () => Promise<RecurringBill[]>;
+        getActive: () => Promise<RecurringBill[]>;
+        getById: (id: number) => Promise<RecurringBill | null>;
+        create: (bill: RecurringBill) => Promise<{ id: number, success: boolean }>;
+        update: (id: number, bill: RecurringBill) => Promise<{ success: boolean }>;
+        delete: (id: number) => Promise<{ success: boolean }>;
+        getByPayee: (payeeId: number) => Promise<RecurringBill[]>;
+        getByAccount: (accountId: number) => Promise<RecurringBill[]>;
+        getUpcoming: (daysAhead?: number) => Promise<RecurringBill[]>;
+        getWithSummary: () => Promise<BillSummary[]>;
+        getOverdue: () => Promise<BillSummary[]>;
+      };
+
+      // Bill Payments
+      billPayments: {
+        getAll: () => Promise<BillPayment[]>;
+        getById: (id: number) => Promise<BillPayment | null>;
+        create: (payment: BillPayment) => Promise<{ id: number, success: boolean }>;
+        update: (id: number, payment: BillPayment) => Promise<{ success: boolean }>;
+        delete: (id: number) => Promise<{ success: boolean }>;
+        getByBill: (billId: number) => Promise<BillPayment[]>;
+        getOverdue: () => Promise<BillPayment[]>;
+        getUpcoming: (daysAhead?: number) => Promise<BillPayment[]>;
+        markPaid: (paymentId: number, transactionId: number, amountPaid: number) => Promise<{ success: boolean }>;
+        markOverdue: (paymentId: number, daysLate: number, lateFee?: number) => Promise<{ success: boolean }>;
+      };
+
+      // Loans Management
+      loans: {
+        getAll: () => Promise<LoanDetails[]>;
+        getById: (id: number) => Promise<LoanDetails | null>;
+        create: (loan: LoanDetails) => Promise<{ id: number, success: boolean }>;
+        update: (id: number, loan: LoanDetails) => Promise<{ success: boolean }>;
+        delete: (id: number) => Promise<{ success: boolean }>;
+        getByAccount: (accountId: number) => Promise<LoanDetails[]>;
+        getByType: (loanType: string) => Promise<LoanDetails[]>;
+        getActiveLoan: (accountId: number) => Promise<LoanDetails | null>;
+        getWithSummary: () => Promise<LoanSummary[]>;
+        updateBalance: (loanId: number, newBalance: number) => Promise<{ success: boolean }>;
+        generateAmortizationSchedule: (loanId: number) => Promise<{ schedule: AmortizationSchedule[], success: boolean }>;
+      };
+
+      // Amortization Schedule
+      amortization: {
+        getAll: () => Promise<AmortizationSchedule[]>;
+        getById: (id: number) => Promise<AmortizationSchedule | null>;
+        create: (schedule: AmortizationSchedule) => Promise<{ id: number, success: boolean }>;
+        update: (id: number, schedule: AmortizationSchedule) => Promise<{ success: boolean }>;
+        delete: (id: number) => Promise<{ success: boolean }>;
+        getByLoan: (loanId: number) => Promise<AmortizationSchedule[]>;
+        getActualPayments: (loanId: number) => Promise<AmortizationSchedule[]>;
+        markPaymentActual: (scheduleId: number, transactionId: number) => Promise<{ success: boolean }>;
+        bulkInsert: (scheduleItems: Omit<AmortizationSchedule, 'schedule_id'>[]) => Promise<{ success: boolean }>;
+      };
+
+      // Interest Expenses
+      interest: {
+        getAll: () => Promise<InterestExpense[]>;
+        getById: (id: number) => Promise<InterestExpense | null>;
+        create: (expense: InterestExpense) => Promise<{ id: number, success: boolean }>;
+        update: (id: number, expense: InterestExpense) => Promise<{ success: boolean }>;
+        delete: (id: number) => Promise<{ success: boolean }>;
+        getByAccount: (accountId: number) => Promise<InterestExpense[]>;
+        getByType: (expenseType: InterestExpenseType) => Promise<InterestExpense[]>;
+        getByDateRange: (startDate: string, endDate: string) => Promise<InterestExpense[]>;
+        getWithSummary: () => Promise<InterestExpenseSummary[]>;
+        getTotalByAccount: (accountId: number, year?: number) => Promise<number>;
+        getTotalByType: (expenseType: InterestExpenseType, year?: number) => Promise<number>;
+        getMonthlyTrend: (accountId: number, months?: number) => Promise<Array<{month: string, amount: number}>>;
+        getCreditCardAnalysis: (accountId: number) => Promise<CreditCardInterestAnalysis | null>;
+        recordExpense: (params: {
+          accountId: number;
+          expenseType: InterestExpenseType;
+          periodStart: string;
+          periodEnd: string;
+          averageBalance: number;
+          interestRate: number;
+          interestAmount: number;
+          transactionId?: number;
+        }) => Promise<{ id: number, success: boolean }>;
       };
     };
   }

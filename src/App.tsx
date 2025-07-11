@@ -10,14 +10,15 @@ import MainLayout from './presentation/layouts/MainLayout';
 // Pages
 import AccountsPage from './presentation/pages/accounts/AccountsPage';
 import TransactionsPage from './presentation/pages/transactions/TransactionsPage';
-import CategoriesPage from './presentation/pages/categories/CategoriesPage';
-
-// Pages
+import PayeesPage from './presentation/pages/payees/PayeesPage';
 import DashboardPage from './presentation/pages/dashboard/DashboardPage';
-import AccountSummaryPage from './presentation/pages/account-summary';
 import SettingsPage from './presentation/pages/settings';
 import BudgetPage from './presentation/pages/budget';
 import AIPage from './presentation/pages/ai';
+import BillsPage from './presentation/pages/bills';
+import SubscriptionsPage from './presentation/pages/subscriptions';
+import LoansPage from './presentation/pages/loans';
+import CreditCardsPage from './presentation/pages/credit-cards';
 
 // Create theme
 const theme = createTheme({
@@ -40,10 +41,13 @@ const App: React.FC = () => {
         <MainLayout>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/account-summary" element={<AccountSummaryPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
-            <Route path="/categories" element={<CategoriesPage />} />
+            <Route path="/payees" element={<PayeesPage />} />
+            <Route path="/bills" element={<BillsPage />} />
+            <Route path="/subscriptions" element={<SubscriptionsPage />} />
+            <Route path="/loans" element={<LoansPage />} />
+            <Route path="/credit-cards" element={<CreditCardsPage />} />
             <Route path="/budget" element={<BudgetPage />} />
             <Route path="/ai" element={<AIPage />} />
             <Route path="/settings" element={<SettingsPage />} />

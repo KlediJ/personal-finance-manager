@@ -4,7 +4,11 @@ import { DatabaseManager } from '../src/data-storage/database/DatabaseManager';
 import { setupAccountHandlers } from './ipc/accountHandlers';
 import { setupTransactionHandlers } from './ipc/transactionHandlers';
 import { setupCategoryHandlers } from './ipc/categoryHandlers';
+import { setupPayeeHandlers } from './ipc/payeeHandlers';
 import { setupBudgetHandlers } from './ipc/budgetHandlers';
+import { setupBillHandlers } from './ipc/billHandlers';
+import { setupLoanHandlers } from './ipc/loanHandlers';
+import { setupInterestHandlers } from './ipc/interestHandlers';
 import { initializeAIHandlers, cleanupAIServices } from './ipc/aiHandlers';
 
 let mainWindow: BrowserWindow | null = null;
@@ -24,8 +28,16 @@ async function createWindow() {
     console.log('✓ Transaction handlers set up');
     setupCategoryHandlers();
     console.log('✓ Category handlers set up');
+    setupPayeeHandlers();
+    console.log('✓ Payee handlers set up');
     setupBudgetHandlers();
     console.log('✓ Budget handlers set up');
+    setupBillHandlers();
+    console.log('✓ Bill handlers set up');
+    setupLoanHandlers();
+    console.log('✓ Loan handlers set up');
+    setupInterestHandlers();
+    console.log('✓ Interest handlers set up');
     initializeAIHandlers();
     console.log('✓ AI handlers set up');
     

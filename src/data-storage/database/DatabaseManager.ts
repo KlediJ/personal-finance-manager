@@ -3,6 +3,7 @@ import { SchemaInitializer } from './SchemaInitializer';
 import { AccountRepository } from '../repositories/AccountRepository';
 import { TransactionRepository } from '../repositories/TransactionRepository';
 import { CategoryRepository } from '../repositories/CategoryRepository';
+import { PayeeRepository } from '../repositories/PayeeRepository';
 import { BudgetRepository } from '../repositories/BudgetRepository';
 
 export class DatabaseManager {
@@ -13,6 +14,7 @@ export class DatabaseManager {
   private accountRepository: AccountRepository;
   private transactionRepository: TransactionRepository;
   private categoryRepository: CategoryRepository;
+  private payeeRepository: PayeeRepository;
   private budgetRepository: BudgetRepository;
   
   private constructor() {
@@ -27,6 +29,9 @@ export class DatabaseManager {
     
     this.categoryRepository = new CategoryRepository();
     console.log('✓ Category repository created');
+    
+    this.payeeRepository = new PayeeRepository();
+    console.log('✓ Payee repository created');
     
     try {
       this.budgetRepository = new BudgetRepository();
@@ -85,6 +90,10 @@ export class DatabaseManager {
 
   public getCategoryRepository(): CategoryRepository {
     return this.categoryRepository;
+  }
+  
+  public getPayeeRepository(): PayeeRepository {
+    return this.payeeRepository;
   }
   
   public getBudgetRepository(): BudgetRepository {

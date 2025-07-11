@@ -17,13 +17,16 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
-import SummarizeIcon from '@mui/icons-material/Summarize';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ReceiptIcon from '@mui/icons-material/Receipt';
-import CategoryIcon from '@mui/icons-material/Category';
+import PersonIcon from '@mui/icons-material/Person';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import SubscriptionsIcon from '@mui/icons-material/Subscriptions';
+import HomeIcon from '@mui/icons-material/Home';
+import CreditCardIcon from '@mui/icons-material/CreditCard';
 import { useNavigate, useLocation } from 'react-router-dom';
 // Import the logo properly
 import logoImage from '../../assets/images/logo.png';
@@ -45,8 +48,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-    { text: 'Account Summary', icon: <SummarizeIcon />, path: '/account-summary' },
+    { text: 'Accounts', icon: <AccountBalanceIcon />, path: '/accounts' },
     { text: 'Transactions', icon: <ReceiptIcon />, path: '/transactions' },
+    { text: 'Payees', icon: <PersonIcon />, path: '/payees' },
+    { text: 'Bills', icon: <ReceiptLongIcon />, path: '/bills' },
+    { text: 'Subscriptions', icon: <SubscriptionsIcon />, path: '/subscriptions' },
+    { text: 'Loans', icon: <HomeIcon />, path: '/loans' },
+    { text: 'Credit Cards', icon: <CreditCardIcon />, path: '/credit-cards' },
     { text: 'Budget', icon: <MonetizationOnIcon />, path: '/budget' },
     { text: 'AI Assistant', icon: <SmartToyIcon />, path: '/ai' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }

@@ -386,6 +386,79 @@ function initSchema() {
     }
     console.log('Default categories created');
   }
+
+  // Payees table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS payees (
+      payee_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      default_category_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (default_category_id) REFERENCES categories (category_id)
+    )
+  `);
+
+  // Payee details table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS payee_details (
+      payee_id INTEGER PRIMARY KEY,
+      business_type TEXT,
+      website TEXT,
+      phone TEXT,
+      address TEXT,
+      auto_categorization_rules TEXT,
+      payment_methods TEXT,
+      typical_amount_range TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (payee_id) REFERENCES payees (payee_id) ON DELETE CASCADE
+    )
+  `);
+
+  // Recurring bills table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recurring_bills (
+      bill_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      payee_id INTEGER,
+      category_id INTEGER,
+      account_id INTEGER,
+      amount REAL NOT NULL,
+      frequency TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT,
+      auto_pay INTEGER NOT NULL DEFAULT 0,
+      reminder_days INTEGER NOT NULL DEFAULT 3,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (payee_id) REFERENCES payees (payee_id),
+      FOREIGN KEY (category_id) REFERENCES categories (category_id),
+      FOREIGN KEY (account_id) REFERENCES accounts (account_id)
+    )
+  `);
+
+  // Loan details table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS loan_details (
+      loan_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id INTEGER NOT NULL,
+      loan_type TEXT NOT NULL,
+      original_amount REAL NOT NULL,
+      current_balance REAL NOT NULL,
+      interest_rate REAL NOT NULL,
+      term_months INTEGER NOT NULL,
+      payment_amount REAL NOT NULL,
+      payment_frequency TEXT NOT NULL DEFAULT 'monthly',
+      start_date TEXT NOT NULL,
+      maturity_date TEXT NOT NULL,
+      escrow_amount REAL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (account_id) REFERENCES accounts (account_id)
+    )
+  `);
   
   console.log('Database schema initialized');
 }
@@ -575,6 +648,428 @@ function setupCategoryHandlers() {
   console.log('Category IPC handlers registered');
 }
 
+// Set up IPC handlers for payee operations
+function setupPayeeHandlers() {
+  // Get all payees
+  ipcMain.handle('payees:getAll', () => {
+    const stmt = db.prepare(`
+      SELECT p.*, 
+             pd.business_type, pd.website, pd.phone, pd.address,
+             pd.auto_categorization_rules, pd.payment_methods, pd.typical_amount_range,
+             COUNT(t.transaction_id) as transaction_count
+      FROM payees p
+      LEFT JOIN payee_details pd ON p.payee_id = pd.payee_id
+      LEFT JOIN transactions t ON p.payee_id = t.payee_id
+      GROUP BY p.payee_id
+      ORDER BY p.name ASC
+    `);
+    const rows = stmt.all();
+    
+    return rows.map(row => ({
+      payee_id: row.payee_id,
+      name: row.name,
+      default_category_id: row.default_category_id,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      transaction_count: row.transaction_count || 0,
+      details: row.business_type ? {
+        payee_id: row.payee_id,
+        business_type: row.business_type,
+        website: row.website,
+        phone: row.phone,
+        address: row.address,
+        auto_categorization_rules: row.auto_categorization_rules,
+        payment_methods: row.payment_methods,
+        typical_amount_range: row.typical_amount_range
+      } : undefined
+    }));
+  });
+
+  // Get payee by ID
+  ipcMain.handle('payees:getById', (_, id) => {
+    const stmt = db.prepare(`
+      SELECT p.*, 
+             pd.business_type, pd.website, pd.phone, pd.address,
+             pd.auto_categorization_rules, pd.payment_methods, pd.typical_amount_range
+      FROM payees p
+      LEFT JOIN payee_details pd ON p.payee_id = pd.payee_id
+      WHERE p.payee_id = ?
+    `);
+    const row = stmt.get(id);
+    
+    if (!row) return null;
+    
+    return {
+      payee_id: row.payee_id,
+      name: row.name,
+      default_category_id: row.default_category_id,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      details: row.business_type ? {
+        payee_id: row.payee_id,
+        business_type: row.business_type,
+        website: row.website,
+        phone: row.phone,
+        address: row.address,
+        auto_categorization_rules: row.auto_categorization_rules,
+        payment_methods: row.payment_methods,
+        typical_amount_range: row.typical_amount_range
+      } : undefined
+    };
+  });
+
+  // Create payee
+  ipcMain.handle('payees:create', (_, payee) => {
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO payees (name, default_category_id)
+        VALUES (?, ?)
+      `);
+      const result = stmt.run(payee.name, payee.default_category_id);
+      const payeeId = result.lastInsertRowid;
+      
+      // Create payee details if provided
+      if (payee.details) {
+        const detailsStmt = db.prepare(`
+          INSERT INTO payee_details (
+            payee_id, business_type, website, phone, address,
+            auto_categorization_rules, payment_methods, typical_amount_range
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        detailsStmt.run(
+          payeeId,
+          payee.details.business_type,
+          payee.details.website,
+          payee.details.phone,
+          payee.details.address,
+          payee.details.auto_categorization_rules,
+          payee.details.payment_methods,
+          payee.details.typical_amount_range
+        );
+      }
+      
+      return { id: payeeId, success: true };
+    } catch (error) {
+      console.error('Error creating payee:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Update payee
+  ipcMain.handle('payees:update', (_, id, payee) => {
+    try {
+      const stmt = db.prepare(`
+        UPDATE payees 
+        SET name = ?, default_category_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE payee_id = ?
+      `);
+      const result = stmt.run(payee.name, payee.default_category_id, id);
+      
+      // Update or create payee details if provided
+      if (payee.details) {
+        const checkStmt = db.prepare('SELECT payee_id FROM payee_details WHERE payee_id = ?');
+        const exists = checkStmt.get(id);
+        
+        if (exists) {
+          const updateStmt = db.prepare(`
+            UPDATE payee_details SET
+              business_type = ?, website = ?, phone = ?, address = ?,
+              auto_categorization_rules = ?, payment_methods = ?, typical_amount_range = ?,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE payee_id = ?
+          `);
+          updateStmt.run(
+            payee.details.business_type,
+            payee.details.website,
+            payee.details.phone,
+            payee.details.address,
+            payee.details.auto_categorization_rules,
+            payee.details.payment_methods,
+            payee.details.typical_amount_range,
+            id
+          );
+        } else {
+          const insertStmt = db.prepare(`
+            INSERT INTO payee_details (
+              payee_id, business_type, website, phone, address,
+              auto_categorization_rules, payment_methods, typical_amount_range
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          insertStmt.run(
+            id,
+            payee.details.business_type,
+            payee.details.website,
+            payee.details.phone,
+            payee.details.address,
+            payee.details.auto_categorization_rules,
+            payee.details.payment_methods,
+            payee.details.typical_amount_range
+          );
+        }
+      }
+      
+      return { success: result.changes > 0 };
+    } catch (error) {
+      console.error('Error updating payee:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Delete payee
+  ipcMain.handle('payees:delete', (_, id) => {
+    try {
+      const stmt = db.prepare('DELETE FROM payees WHERE payee_id = ?');
+      const result = stmt.run(id);
+      return { success: result.changes > 0 };
+    } catch (error) {
+      console.error('Error deleting payee:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get enhanced payees (alias for getAll since it already includes stats)
+  ipcMain.handle('payees:getEnhanced', () => {
+    return ipcMain.handle('payees:getAll');
+  });
+
+  console.log('Payee IPC handlers registered');
+}
+
+// Set up IPC handlers for bills and subscriptions
+function setupBillsHandlers() {
+  // Get all bills
+  ipcMain.handle('bills:getAll', () => {
+    const stmt = db.prepare(`
+      SELECT b.*, 
+             p.name as payee_name,
+             c.name as category_name,
+             a.name as account_name
+      FROM recurring_bills b
+      LEFT JOIN payees p ON b.payee_id = p.payee_id
+      LEFT JOIN categories c ON b.category_id = c.category_id
+      LEFT JOIN accounts a ON b.account_id = a.account_id
+      ORDER BY b.name ASC
+    `);
+    return stmt.all();
+  });
+
+  // Get active bills
+  ipcMain.handle('bills:getActive', () => {
+    const stmt = db.prepare(`
+      SELECT b.*, 
+             p.name as payee_name,
+             c.name as category_name,
+             a.name as account_name
+      FROM recurring_bills b
+      LEFT JOIN payees p ON b.payee_id = p.payee_id
+      LEFT JOIN categories c ON b.category_id = c.category_id
+      LEFT JOIN accounts a ON b.account_id = a.account_id
+      WHERE b.active = 1
+      ORDER BY b.name ASC
+    `);
+    return stmt.all();
+  });
+
+  // Get bill by ID
+  ipcMain.handle('bills:getById', (_, id) => {
+    const stmt = db.prepare(`
+      SELECT b.*, 
+             p.name as payee_name,
+             c.name as category_name,
+             a.name as account_name
+      FROM recurring_bills b
+      LEFT JOIN payees p ON b.payee_id = p.payee_id
+      LEFT JOIN categories c ON b.category_id = c.category_id
+      LEFT JOIN accounts a ON b.account_id = a.account_id
+      WHERE b.bill_id = ?
+    `);
+    return stmt.get(id);
+  });
+
+  // Create bill
+  ipcMain.handle('bills:create', (_, bill) => {
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO recurring_bills (
+          name, payee_id, category_id, account_id, amount, frequency,
+          start_date, end_date, auto_pay, reminder_days, active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const result = stmt.run(
+        bill.name,
+        bill.payee_id,
+        bill.category_id,
+        bill.account_id,
+        bill.amount,
+        bill.frequency,
+        bill.start_date,
+        bill.end_date,
+        bill.auto_pay ? 1 : 0,
+        bill.reminder_days,
+        bill.active ? 1 : 0
+      );
+      return { id: result.lastInsertRowid, success: true };
+    } catch (error) {
+      console.error('Error creating bill:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Update bill
+  ipcMain.handle('bills:update', (_, id, bill) => {
+    try {
+      const stmt = db.prepare(`
+        UPDATE recurring_bills SET
+          name = ?, payee_id = ?, category_id = ?, account_id = ?, amount = ?,
+          frequency = ?, start_date = ?, end_date = ?, auto_pay = ?,
+          reminder_days = ?, active = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE bill_id = ?
+      `);
+      const result = stmt.run(
+        bill.name,
+        bill.payee_id,
+        bill.category_id,
+        bill.account_id,
+        bill.amount,
+        bill.frequency,
+        bill.start_date,
+        bill.end_date,
+        bill.auto_pay ? 1 : 0,
+        bill.reminder_days,
+        bill.active ? 1 : 0,
+        id
+      );
+      return { success: result.changes > 0 };
+    } catch (error) {
+      console.error('Error updating bill:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Delete bill
+  ipcMain.handle('bills:delete', (_, id) => {
+    try {
+      const stmt = db.prepare('DELETE FROM recurring_bills WHERE bill_id = ?');
+      const result = stmt.run(id);
+      return { success: result.changes > 0 };
+    } catch (error) {
+      console.error('Error deleting bill:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get upcoming bills
+  ipcMain.handle('bills:getUpcoming', (_, daysAhead = 30) => {
+    const stmt = db.prepare(`
+      SELECT b.*, 
+             p.name as payee_name,
+             c.name as category_name,
+             a.name as account_name
+      FROM recurring_bills b
+      LEFT JOIN payees p ON b.payee_id = p.payee_id
+      LEFT JOIN categories c ON b.category_id = c.category_id
+      LEFT JOIN accounts a ON b.account_id = a.account_id
+      WHERE b.active = 1
+      AND date(b.start_date) <= date('now', '+' || ? || ' days')
+      ORDER BY b.start_date ASC
+    `);
+    return stmt.all(daysAhead);
+  });
+
+  console.log('Bills IPC handlers registered');
+}
+
+// Set up IPC handlers for loans
+function setupLoansHandlers() {
+  // Get all loans
+  ipcMain.handle('loans:getAll', () => {
+    const stmt = db.prepare(`
+      SELECT l.*, 
+             a.name as account_name
+      FROM loan_details l
+      LEFT JOIN accounts a ON l.account_id = a.account_id
+      ORDER BY l.loan_type ASC, l.loan_id ASC
+    `);
+    return stmt.all();
+  });
+
+  // Get loan by ID
+  ipcMain.handle('loans:getById', (_, id) => {
+    const stmt = db.prepare(`
+      SELECT l.*, 
+             a.name as account_name
+      FROM loan_details l
+      LEFT JOIN accounts a ON l.account_id = a.account_id
+      WHERE l.loan_id = ?
+    `);
+    return stmt.get(id);
+  });
+
+  // Create new loan
+  ipcMain.handle('loans:create', (_, loan) => {
+    const stmt = db.prepare(`
+      INSERT INTO loan_details (
+        account_id, loan_type, original_amount, current_balance, 
+        interest_rate, term_months, payment_amount, payment_frequency,
+        start_date, maturity_date, escrow_amount
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    const result = stmt.run(
+      loan.account_id,
+      loan.loan_type,
+      loan.original_amount,
+      loan.current_balance || loan.original_amount,
+      loan.interest_rate,
+      loan.term_months,
+      loan.payment_amount,
+      loan.payment_frequency,
+      loan.start_date,
+      loan.maturity_date,
+      loan.escrow_amount || 0
+    );
+    
+    return { loan_id: result.lastInsertRowid };
+  });
+
+  // Update loan
+  ipcMain.handle('loans:update', (_, id, loan) => {
+    const stmt = db.prepare(`
+      UPDATE loan_details SET 
+        account_id = ?, loan_type = ?, original_amount = ?, current_balance = ?,
+        interest_rate = ?, term_months = ?, payment_amount = ?, payment_frequency = ?,
+        start_date = ?, maturity_date = ?, escrow_amount = ?
+      WHERE loan_id = ?
+    `);
+    
+    const result = stmt.run(
+      loan.account_id,
+      loan.loan_type,
+      loan.original_amount,
+      loan.current_balance,
+      loan.interest_rate,
+      loan.term_months,
+      loan.payment_amount,
+      loan.payment_frequency,
+      loan.start_date,
+      loan.maturity_date,
+      loan.escrow_amount || 0,
+      id
+    );
+    
+    return { changes: result.changes };
+  });
+
+  // Delete loan
+  ipcMain.handle('loans:delete', (_, id) => {
+    const stmt = db.prepare('DELETE FROM loan_details WHERE loan_id = ?');
+    const result = stmt.run(id);
+    return { changes: result.changes };
+  });
+
+  console.log('Loans IPC handlers registered');
+}
+
 let mainWindow;
 
 function createWindow() {
@@ -585,6 +1080,9 @@ function createWindow() {
   setupAccountHandlers();
   setupTransactionHandlers();
   setupCategoryHandlers();
+  setupPayeeHandlers();
+  setupBillsHandlers();
+  setupLoansHandlers();
   setupBudgetHandlers();
   setupImportExportHandlers();
   

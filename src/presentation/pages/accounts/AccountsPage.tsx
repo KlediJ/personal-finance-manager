@@ -15,7 +15,11 @@ import {
   IconButton,
   Dialog,
   Snackbar,
-  Alert
+  Alert,
+  Grid,
+  Card,
+  CardContent,
+  Divider
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -180,10 +184,68 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ inSettingsPage = false }) =
     }).format(amount);
   };
 
+  // Calculate account summaries
+  const accountSummary = accounts.reduce((summary, account) => {
+    const type = account.type;
+    if (!summary[type]) {
+      summary[type] = { totalBalance: 0, count: 0 };
+    }
+    summary[type].totalBalance += account.current_balance;
+    summary[type].count += 1;
+    return summary;
+  }, {} as Record<string, { totalBalance: number; count: number }>);
+
+  const totalBalance = accounts.reduce((sum, account) => sum + account.current_balance, 0);
+
   return (
     <Box>
+      {!inSettingsPage && (
+        <>
+          <Typography variant="h5" sx={{ mb: 3 }}>Accounts</Typography>
+          
+          {/* Account Summary Cards */}
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} md={3}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" color="primary" gutterBottom>
+                    Total Balance
+                  </Typography>
+                  <Typography variant="h4">
+                    {formatCurrency(totalBalance, 'USD')}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Across {accounts.length} accounts
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            {Object.entries(accountSummary).map(([type, data]) => (
+              <Grid item xs={12} md={3} key={type}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+                      {getAccountTypeLabel(type as AccountType)}
+                    </Typography>
+                    <Typography variant="h5">
+                      {formatCurrency(data.totalBalance, 'USD')}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {data.count} account{data.count !== 1 ? 's' : ''}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+          
+          <Divider sx={{ mb: 3 }} />
+        </>
+      )}
+      
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        {!inSettingsPage && <Typography variant="h5">Accounts</Typography>}
+        {inSettingsPage && <Typography variant="h6">Manage Accounts</Typography>}
         <Button 
           variant="contained" 
           startIcon={<AddIcon />}

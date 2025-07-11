@@ -159,8 +159,11 @@ export class CsvProcessor {
             rowErrors.date = 'Invalid date format';
             hasErrors = true;
           } else {
-            // Format as YYYY-MM-DD for SQLite
-            transaction.date = dateValue.toISOString().split('T')[0];
+            // Format as YYYY-MM-DD for SQLite (preserve local date, avoid timezone conversion)
+            const year = dateValue.getFullYear();
+            const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+            const day = String(dateValue.getDate()).padStart(2, '0');
+            transaction.date = `${year}-${month}-${day}`;
           }
         } catch (e) {
           rowErrors.date = 'Invalid date format';

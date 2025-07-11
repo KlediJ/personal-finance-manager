@@ -419,8 +419,12 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                       <FormControl size="small" sx={{ minWidth: 150 }}>
                         <Select
                           value=""
+                          displayEmpty
                           onChange={(e) => handleSaveManualCategory(transaction.transaction_id!, Number(e.target.value))}
                         >
+                          <MenuItem value="" disabled>
+                            <em>Select Category</em>
+                          </MenuItem>
                           {categories.map((category) => (
                             <MenuItem key={category.category_id} value={category.category_id}>
                               {category.name}

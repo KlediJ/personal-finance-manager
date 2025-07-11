@@ -4,7 +4,12 @@
 Personal Finance Manager is a cross-platform desktop application (built with Electron) for tracking, analyzing, and managing personal finances. The application uses a React frontend with Material UI components and a SQLite database for persistent storage.
 
 ## Current Version
-Version 0.3 - Account Summary Update
+Version 0.1.2 - Date Display Bug Fix
+
+### Changelog
+- v0.1.2 (Current) - Fixed timezone-related date display bug in transactions
+- v0.1.1 - Initial working version with core features
+- v0.3 (Legacy) - Account Summary Update
 
 ## Architecture
 

@@ -36,9 +36,11 @@ const DataPreviewStep: React.FC<DataPreviewStepProps> = ({
     setTabValue(newValue);
   };
 
-  // Format date for display
+  // Format date for display (avoid timezone issues)
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // Parse date without timezone conversion
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',

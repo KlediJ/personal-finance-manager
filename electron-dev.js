@@ -588,6 +588,15 @@ function createWindow() {
   setupBudgetHandlers();
   setupImportExportHandlers();
   
+  // Initialize AI handlers
+  try {
+    const { initializeAIHandlers } = require('./build/electron/electron/ipc/aiHandlers.js');
+    initializeAIHandlers();
+    console.log('✓ AI handlers initialized');
+  } catch (error) {
+    console.error('Error initializing AI handlers:', error);
+  }
+  
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,

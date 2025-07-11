@@ -335,7 +335,11 @@ const TransactionsPage: React.FC = () => {
 
   // Format transaction date
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // Parse the date components to avoid timezone issues
+    // dateString is in format YYYY-MM-DD
+    const [year, month, day] = dateString.split('-').map(num => parseInt(num, 10));
+    // Create date using local timezone (month is 0-indexed in JS)
+    const date = new Date(year, month - 1, day);
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',

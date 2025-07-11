@@ -22,6 +22,11 @@ class SchemaInitializer {
         this.createLoanDetailsTable(db);
         this.createAmortizationScheduleTable(db);
         this.createInterestExpensesTable(db);
+        // AI model storage and learning tables
+        this.createAIModelsTable(db);
+        this.createAILearningDataTable(db);
+        this.createAIPredictionCacheTable(db);
+        this.createAIPerformanceMetricsTable(db);
         console.log('Database schema initialized');
     }
     static createAccountsTable(db) {
@@ -274,6 +279,81 @@ class SchemaInitializer {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (account_id) REFERENCES accounts (account_id),
         FOREIGN KEY (transaction_id) REFERENCES transactions (transaction_id)
+      )
+    `);
+    }
+    static createAIModelsTable(db) {
+        db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_models (
+        model_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        model_name TEXT NOT NULL UNIQUE,
+        model_type TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        file_path TEXT,
+        file_size INTEGER,
+        model_config TEXT,
+        load_count INTEGER NOT NULL DEFAULT 0,
+        last_loaded TIMESTAMP,
+        memory_usage INTEGER,
+        performance_metrics TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    }
+    static createAILearningDataTable(db) {
+        db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_learning_data (
+        learning_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        model_name TEXT NOT NULL,
+        input_data TEXT NOT NULL,
+        expected_output TEXT NOT NULL,
+        actual_output TEXT,
+        feedback_type TEXT NOT NULL,
+        confidence_score REAL,
+        was_correct INTEGER NOT NULL DEFAULT 0,
+        user_correction TEXT,
+        transaction_id INTEGER,
+        category_id INTEGER,
+        payee_id INTEGER,
+        processing_time INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (transaction_id) REFERENCES transactions (transaction_id),
+        FOREIGN KEY (category_id) REFERENCES categories (category_id),
+        FOREIGN KEY (payee_id) REFERENCES payees (payee_id)
+      )
+    `);
+    }
+    static createAIPredictionCacheTable(db) {
+        db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_prediction_cache (
+        cache_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        input_hash TEXT NOT NULL UNIQUE,
+        model_name TEXT NOT NULL,
+        input_data TEXT NOT NULL,
+        prediction_result TEXT NOT NULL,
+        confidence_score REAL,
+        hit_count INTEGER NOT NULL DEFAULT 1,
+        last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    }
+    static createAIPerformanceMetricsTable(db) {
+        db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_performance_metrics (
+        metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        model_name TEXT NOT NULL,
+        metric_type TEXT NOT NULL,
+        metric_name TEXT NOT NULL,
+        metric_value REAL NOT NULL,
+        metric_data TEXT,
+        measurement_period_start TIMESTAMP,
+        measurement_period_end TIMESTAMP,
+        sample_size INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     }

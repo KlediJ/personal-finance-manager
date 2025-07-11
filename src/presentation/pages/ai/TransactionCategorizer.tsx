@@ -40,8 +40,17 @@ interface TransactionCategorizerProps {
 
 interface UncategorizedTransaction extends Transaction {
   suggestedCategory?: Category;
+  suggestedPayee?: string;
   confidence?: number;
+  payeeConfidence?: number;
   isEditing?: boolean;
+  extractedInfo?: {
+    merchant?: string;
+    location?: string;
+    paymentMethod?: string;
+    transactionType?: string;
+    keywords?: string[];
+  };
 }
 
 const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatus }) => {
@@ -77,22 +86,29 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
 
   const loadUncategorizedTransactions = async () => {
     try {
-      // Fallback if AI API is not available
-      if (!window.api || !window.api.ai || !window.api.ai.getUncategorizedTransactions) {
-        // Use regular API
-        const transactions = await window.api.transactions.getAll();
-        const uncategorized = transactions.filter((t: Transaction) => !t.category_id);
-        setUncategorizedTransactions(uncategorized);
-        return;
-      }
+      // Always try regular API first for more reliable data
+      const transactions = await window.api.transactions.getAll();
+      const uncategorized = transactions.filter((t: Transaction) => !t.category_id);
       
-      // Use AI service to get uncategorized transactions
-      const result = await window.api.ai.getUncategorizedTransactions();
-      if (result.success && result.transactions) {
-        setUncategorizedTransactions(result.transactions);
-      } else {
-        console.error('Error loading uncategorized transactions:', result.error);
-        setUncategorizedTransactions([]);
+      console.log(`Found ${uncategorized.length} uncategorized transactions out of ${transactions.length} total`);
+      setUncategorizedTransactions(uncategorized);
+      
+      // Optional: Try AI service as well for comparison
+      if (window.api && window.api.ai && window.api.ai.getUncategorizedTransactions) {
+        try {
+          const aiResult = await window.api.ai.getUncategorizedTransactions();
+          if (aiResult.success && aiResult.transactions) {
+            console.log(`AI service found ${aiResult.transactions.length} uncategorized transactions`);
+            // Use AI result if it's more detailed (has additional AI-specific fields)
+            if (aiResult.transactions.length === uncategorized.length) {
+              setUncategorizedTransactions(aiResult.transactions);
+            }
+          } else {
+            console.log('AI service failed, using regular API result:', aiResult.error);
+          }
+        } catch (aiError) {
+          console.log('AI service error, using regular API result:', aiError);
+        }
       }
     } catch (error) {
       console.error('Error loading uncategorized transactions:', error);
@@ -111,32 +127,38 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
 
   const loadStats = async () => {
     try {
-      // Fallback if AI API is not available
-      if (!window.api || !window.api.ai || !window.api.ai.getStatistics) {
-        // Calculate stats manually
-        const allTransactions = await window.api.transactions.getAll();
-        const categorized = allTransactions.filter((t: Transaction) => t.category_id);
-        const uncategorized = allTransactions.filter((t: Transaction) => !t.category_id);
-        
-        setStats({
-          total: allTransactions.length,
-          categorized: categorized.length,
-          uncategorized: uncategorized.length,
-          lastRun: null
-        });
-        return;
-      }
+      // Always calculate stats manually from regular API for reliability
+      const allTransactions = await window.api.transactions.getAll();
+      const categorized = allTransactions.filter((t: Transaction) => t.category_id);
+      const uncategorized = allTransactions.filter((t: Transaction) => !t.category_id);
       
-      const result = await window.api.ai.getStatistics();
-      if (result.success) {
-        setStats({
-          total: result.stats.total,
-          categorized: result.stats.categorized,
-          uncategorized: result.stats.uncategorized,
-          lastRun: result.stats.lastUpdated ? new Date(result.stats.lastUpdated) : null
-        });
-      } else {
-        console.error('Error loading stats:', result.error);
+      const calculatedStats = {
+        total: allTransactions.length,
+        categorized: categorized.length,
+        uncategorized: uncategorized.length,
+        lastRun: null as Date | null
+      };
+      
+      console.log(`Stats: ${calculatedStats.categorized} categorized, ${calculatedStats.uncategorized} uncategorized out of ${calculatedStats.total} total`);
+      setStats(calculatedStats);
+      
+      // Optional: Try AI service as well for comparison
+      if (window.api && window.api.ai && window.api.ai.getStatistics) {
+        try {
+          const aiResult = await window.api.ai.getStatistics();
+          if (aiResult.success) {
+            console.log(`AI Stats: ${aiResult.stats.categorized} categorized, ${aiResult.stats.uncategorized} uncategorized out of ${aiResult.stats.total} total`);
+            // Use AI result if it has additional information (like lastRun)
+            setStats({
+              ...calculatedStats,
+              lastRun: aiResult.stats.lastUpdated ? new Date(aiResult.stats.lastUpdated) : null
+            });
+          } else {
+            console.log('AI statistics failed, using calculated stats:', aiResult.error);
+          }
+        } catch (aiError) {
+          console.log('AI statistics error, using calculated stats:', aiError);
+        }
       }
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -150,6 +172,8 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
     setProgress(0);
 
     try {
+      console.log(`Starting AI categorization for ${uncategorizedTransactions.length} transactions`);
+      
       // Check if AI API is available
       if (!window.api || !window.api.ai || !window.api.ai.batchCategorizeTransactions) {
         console.log('AI API not available, using mock categorization');
@@ -161,15 +185,32 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
       const result = await window.api.ai.batchCategorizeTransactions(uncategorizedTransactions);
       
       if (result.success) {
+        console.log(`AI categorization completed successfully with ${Object.keys(result.results).length} results`);
+        
         // Update transactions with AI suggestions
         setUncategorizedTransactions(prev => 
           prev.map(transaction => {
-            const predictions = result.results[transaction.transaction_id!];
-            if (predictions && predictions.length > 0) {
+            const aiResult = result.results[transaction.transaction_id!];
+            if (aiResult) {
+              // Extract category prediction
+              const categoryPrediction = aiResult.categoryPredictions?.[0];
+              const payeeExtraction = aiResult.payeeExtraction;
+              
+              console.log(`Transaction ${transaction.transaction_id}: AI Result:`, {
+                category: categoryPrediction?.category?.name,
+                categoryConfidence: categoryPrediction?.confidence,
+                payee: payeeExtraction?.payee?.name,
+                payeeConfidence: payeeExtraction?.confidence,
+                extractedInfo: aiResult.extractedInfo
+              });
+              
               return {
                 ...transaction,
-                suggestedCategory: predictions[0].category,
-                confidence: predictions[0].confidence
+                suggestedCategory: categoryPrediction?.category,
+                confidence: categoryPrediction?.confidence,
+                suggestedPayee: payeeExtraction?.payee?.name,
+                payeeConfidence: payeeExtraction?.confidence,
+                extractedInfo: aiResult.extractedInfo
               };
             }
             return transaction;
@@ -178,11 +219,13 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
       } else {
         console.error('Error in AI categorization:', result.error);
         // Fallback to mock categorization
+        console.log('Falling back to mock categorization');
         await runMockCategorization();
       }
     } catch (error) {
       console.error('Error running auto-categorization:', error);
       // Fallback to mock categorization
+      console.log('Exception occurred, falling back to mock categorization');
       await runMockCategorization();
     } finally {
       setIsProcessing(false);
@@ -397,7 +440,8 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                 <TableCell>Date</TableCell>
                 <TableCell>Description</TableCell>
                 <TableCell align="right">Amount</TableCell>
-                <TableCell>AI Suggestion</TableCell>
+                <TableCell>AI Category</TableCell>
+                <TableCell>AI Payee</TableCell>
                 <TableCell>Confidence</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
@@ -446,16 +490,39 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                     )}
                   </TableCell>
                   <TableCell>
-                    {transaction.confidence ? (
+                    {transaction.suggestedPayee ? (
                       <Chip
-                        label={`${Math.round(transaction.confidence * 100)}%`}
-                        color={getConfidenceColor(transaction.confidence)}
+                        label={transaction.suggestedPayee}
+                        color="secondary"
                         variant="outlined"
                         size="small"
                       />
                     ) : (
-                      '-'
+                      <Typography variant="body2" color="text.secondary">
+                        No payee
+                      </Typography>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      {transaction.confidence ? (
+                        <Chip
+                          label={`Cat: ${Math.round(transaction.confidence * 100)}%`}
+                          color={getConfidenceColor(transaction.confidence)}
+                          variant="outlined"
+                          size="small"
+                        />
+                      ) : null}
+                      {transaction.payeeConfidence ? (
+                        <Chip
+                          label={`Payee: ${Math.round(transaction.payeeConfidence * 100)}%`}
+                          color={getConfidenceColor(transaction.payeeConfidence)}
+                          variant="outlined"
+                          size="small"
+                        />
+                      ) : null}
+                      {!transaction.confidence && !transaction.payeeConfidence ? '-' : null}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 1 }}>

@@ -117,12 +117,23 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         getStatus: () => electron_1.ipcRenderer.invoke('ai:getStatus'),
         updateContext: () => electron_1.ipcRenderer.invoke('ai:updateContext'),
         clearModels: () => electron_1.ipcRenderer.invoke('ai:clearModels'),
+        // Model Management
+        preloadModels: () => electron_1.ipcRenderer.invoke('ai:preloadModels'),
+        getModelStatus: () => electron_1.ipcRenderer.invoke('ai:getModelStatus'),
+        loadModel: (modelName) => electron_1.ipcRenderer.invoke('ai:loadModel', modelName),
+        unloadModel: (modelName) => electron_1.ipcRenderer.invoke('ai:unloadModel', modelName),
         // Transaction categorization
         categorizeTransaction: (transaction) => electron_1.ipcRenderer.invoke('ai:categorizeTransaction', transaction),
         batchCategorizeTransactions: (transactions) => electron_1.ipcRenderer.invoke('ai:batchCategorizeTransactions', transactions),
         learnFromFeedback: (feedback) => electron_1.ipcRenderer.invoke('ai:learnFromFeedback', feedback),
         // Query processing
         processQuery: (query) => electron_1.ipcRenderer.invoke('ai:processQuery', query),
+        // Financial Analysis
+        analyzeFinancialHealth: () => electron_1.ipcRenderer.invoke('ai:analyzeFinancialHealth'),
+        optimizeLoans: () => electron_1.ipcRenderer.invoke('ai:optimizeLoans'),
+        forecastBills: () => electron_1.ipcRenderer.invoke('ai:forecastBills'),
+        // Smart Automation
+        createPayeeFromTransaction: (transaction) => electron_1.ipcRenderer.invoke('ai:createPayeeFromTransaction', transaction),
         // Data helpers
         getUncategorizedTransactions: () => electron_1.ipcRenderer.invoke('ai:getUncategorizedTransactions'),
         getStatistics: () => electron_1.ipcRenderer.invoke('ai:getStatistics'),

@@ -143,6 +143,12 @@ contextBridge.exposeInMainWorld('api', {
     updateContext: () => ipcRenderer.invoke('ai:updateContext'),
     clearModels: () => ipcRenderer.invoke('ai:clearModels'),
     
+    // Model Management
+    preloadModels: () => ipcRenderer.invoke('ai:preloadModels'),
+    getModelStatus: () => ipcRenderer.invoke('ai:getModelStatus'),
+    loadModel: (modelName: string) => ipcRenderer.invoke('ai:loadModel', modelName),
+    unloadModel: (modelName: string) => ipcRenderer.invoke('ai:unloadModel', modelName),
+    
     // Transaction categorization
     categorizeTransaction: (transaction: Transaction) => 
       ipcRenderer.invoke('ai:categorizeTransaction', transaction),
@@ -153,6 +159,15 @@ contextBridge.exposeInMainWorld('api', {
     
     // Query processing
     processQuery: (query: string) => ipcRenderer.invoke('ai:processQuery', query),
+    
+    // Financial Analysis
+    analyzeFinancialHealth: () => ipcRenderer.invoke('ai:analyzeFinancialHealth'),
+    optimizeLoans: () => ipcRenderer.invoke('ai:optimizeLoans'),
+    forecastBills: () => ipcRenderer.invoke('ai:forecastBills'),
+    
+    // Smart Automation
+    createPayeeFromTransaction: (transaction: Transaction) => 
+      ipcRenderer.invoke('ai:createPayeeFromTransaction', transaction),
     
     // Data helpers
     getUncategorizedTransactions: () => ipcRenderer.invoke('ai:getUncategorizedTransactions'),

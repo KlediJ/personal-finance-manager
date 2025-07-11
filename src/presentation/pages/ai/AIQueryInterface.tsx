@@ -47,35 +47,47 @@ const AIQueryInterface: React.FC<AIQueryInterfaceProps> = ({ aiStatus }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const suggestedQueries = [
+    // Financial queries
     {
       text: "How much did I spend on groceries last month?",
       icon: <CategoryIcon />,
-      category: "Spending Analysis"
+      category: "Financial Query"
     },
     {
       text: "What's my total income for this year?",
       icon: <TrendingUpIcon />,
-      category: "Income Analysis"
+      category: "Financial Query"
     },
     {
       text: "Show me my largest expenses this month",
       icon: <AccountBalanceIcon />,
-      category: "Expense Analysis"
+      category: "Financial Query"
+    },
+    // Chatbot/General AI tests
+    {
+      text: "Hello, how are you today?",
+      icon: <LightbulbIcon />,
+      category: "Chatbot Test"
     },
     {
-      text: "What's my spending trend over the last 6 months?",
-      icon: <DateRangeIcon />,
-      category: "Trend Analysis"
+      text: "What is the capital of France?",
+      icon: <LightbulbIcon />,
+      category: "General Knowledge"
     },
     {
-      text: "Which categories am I overspending on?",
+      text: "Explain quantum physics in simple terms",
+      icon: <LightbulbIcon />,
+      category: "Complex Reasoning"
+    },
+    {
+      text: "Write a short poem about money",
+      icon: <LightbulbIcon />,
+      category: "Creative Writing"
+    },
+    {
+      text: "Help me categorize this transaction: 'WALMART SUPERCENTER #1234 GROCERIES $45.67'",
       icon: <CategoryIcon />,
-      category: "Budget Analysis"
-    },
-    {
-      text: "Show me all transactions above $100",
-      icon: <AccountBalanceIcon />,
-      category: "Transaction Search"
+      category: "AI Training Test"
     }
   ];
 

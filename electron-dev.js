@@ -1088,9 +1088,9 @@ function createWindow() {
   
   // Initialize AI handlers
   try {
-    const { initializeAIHandlers } = require('./build/electron/electron/ipc/aiHandlers.js');
+    const { initializeAIHandlers } = require('./electron/electron/ipc/aiHandlers.js');
     initializeAIHandlers();
-    console.log('✓ AI handlers initialized');
+    console.log('✓ Enhanced AI handlers initialized');
   } catch (error) {
     console.error('Error initializing AI handlers:', error);
   }
@@ -1101,7 +1101,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'electron', 'preload.js')
+      preload: path.join(__dirname, 'electron', 'electron', 'preload.js')
     }
   });
 
@@ -1118,8 +1118,17 @@ function createWindow() {
 
 app.whenReady().then(createWindow);
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
   if (process.platform !== 'darwin') {
+    // Clean up AI services
+    try {
+      const { cleanupAIServices } = require('./electron/electron/ipc/aiHandlers.js');
+      await cleanupAIServices();
+      console.log('✓ AI services cleaned up');
+    } catch (error) {
+      console.error('Error cleaning up AI services:', error);
+    }
+    
     // Close database connection
     if (db) db.close();
     app.quit();

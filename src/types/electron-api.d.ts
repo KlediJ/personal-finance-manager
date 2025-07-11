@@ -113,13 +113,102 @@ declare global {
       };
       
       ai: {
-        getStatus: () => Promise<{ status: string; message: string; features?: any; error?: string }>;
+        // Status & Setup
+        getStatus: () => Promise<{ 
+          status: string; 
+          message: string; 
+          features?: any; 
+          models?: any;
+          memory?: any;
+          error?: string 
+        }>;
         updateContext: () => Promise<{ success: boolean; message?: string; error?: string }>;
         clearModels: () => Promise<{ success: boolean; message?: string; error?: string }>;
-        categorizeTransaction: (transaction: any) => Promise<{ success: boolean; predictions?: any[]; error?: string }>;
+        
+        // Model Management
+        preloadModels: () => Promise<{ success: boolean; message?: string; error?: string }>;
+        getModelStatus: () => Promise<{ 
+          success: boolean; 
+          statuses?: any[]; 
+          memoryUsage?: any; 
+          error?: string 
+        }>;
+        loadModel: (modelName: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+        unloadModel: (modelName: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+        
+        // Enhanced Transaction Processing
+        categorizeTransaction: (transaction: any) => Promise<{ 
+          success: boolean; 
+          enhanced?: boolean;
+          predictions?: any[]; 
+          payeeExtraction?: any;
+          extractedInfo?: any;
+          confidence?: number;
+          error?: string 
+        }>;
         batchCategorizeTransactions: (transactions: any[]) => Promise<{ success: boolean; results?: any; error?: string }>;
         learnFromFeedback: (feedback: any) => Promise<{ success: boolean; message?: string; error?: string }>;
-        processQuery: (query: string) => Promise<{ success: boolean; result?: any; error?: string }>;
+        
+        // Enhanced Query Processing
+        processQuery: (query: string) => Promise<{ 
+          success: boolean; 
+          enhanced?: boolean;
+          result?: any; 
+          modelUsed?: string;
+          processingTime?: number;
+          confidence?: number;
+          error?: string 
+        }>;
+        
+        // Financial Analysis
+        analyzeFinancialHealth: () => Promise<{
+          success: boolean;
+          analysis?: any;
+          modelUsed?: string;
+          processingTime?: number;
+          error?: string;
+        }>;
+        optimizeLoans: () => Promise<{
+          success: boolean;
+          optimization?: any;
+          modelUsed?: string;
+          processingTime?: number;
+          error?: string;
+        }>;
+        forecastBills: () => Promise<{
+          success: boolean;
+          forecast?: any;
+          modelUsed?: string;
+          processingTime?: number;
+          error?: string;
+        }>;
+        
+        // Smart Automation
+        createPayeeFromTransaction: (transaction: any) => Promise<{
+          success: boolean;
+          payee?: any;
+          confidence?: number;
+          categoryPredictions?: any[];
+          extractedInfo?: any;
+          message?: string;
+          error?: string;
+        }>;
+        
+        // Chat Interface (for testing AI intelligence)
+        chat: (messages: Array<{role: 'system' | 'user' | 'assistant', content: string}>) => Promise<{
+          success: boolean;
+          response?: string;
+          error?: string;
+          usage?: {
+            prompt_tokens: number;
+            completion_tokens: number;
+            total_tokens: number;
+          };
+          modelUsed?: string;
+          enhanced?: boolean;
+        }>;
+        
+        // Legacy Functions
         getUncategorizedTransactions: () => Promise<{ success: boolean; transactions?: any[]; error?: string }>;
         getStatistics: () => Promise<{ success: boolean; stats?: any; error?: string }>;
         onCategorizationProgress: (callback: (progress: number) => void) => void;

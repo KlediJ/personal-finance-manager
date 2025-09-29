@@ -7,6 +7,14 @@ export enum AccountType {
   CASH = 'cash'
 }
 
+export enum AccountClass {
+  ASSET = 'Asset',
+  LIABILITY = 'Liability',
+  EQUITY = 'Equity',
+  INCOME = 'Income',
+  EXPENSE = 'Expense'
+}
+
 export interface Account {
   account_id: number;
   name: string;
@@ -17,6 +25,10 @@ export interface Account {
   active: boolean;
   created_at: string;
   updated_at: string;
+  // Chart of Accounts enhancements - Phase 1
+  account_class?: AccountClass;
+  account_code?: string;
+  is_liability?: boolean;
 }
 
 export interface AccountDetails {

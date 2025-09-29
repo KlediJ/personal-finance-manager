@@ -8,6 +8,7 @@ const TransactionRepository_1 = require("../repositories/TransactionRepository")
 const CategoryRepository_1 = require("../repositories/CategoryRepository");
 const PayeeRepository_1 = require("../repositories/PayeeRepository");
 const BudgetRepository_1 = require("../repositories/BudgetRepository");
+const JournalEntryRepository_1 = require("../repositories/JournalEntryRepository");
 class DatabaseManager {
     constructor() {
         this.initialized = false;
@@ -29,6 +30,8 @@ class DatabaseManager {
             console.error('Failed to create budget repository:', error);
             throw error;
         }
+        this.journalEntryRepository = new JournalEntryRepository_1.JournalEntryRepository();
+        console.log('✓ Journal entry repository created');
         console.log('All repositories created in DatabaseManager constructor');
     }
     static getInstance() {
@@ -80,6 +83,9 @@ class DatabaseManager {
             throw new Error('Budget repository not properly initialized');
         }
         return this.budgetRepository;
+    }
+    getJournalEntryRepository() {
+        return this.journalEntryRepository;
     }
     // Add getters for other repositories as they're implemented
     shutdown() {

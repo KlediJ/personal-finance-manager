@@ -5,6 +5,7 @@ import { TransactionRepository } from '../repositories/TransactionRepository';
 import { CategoryRepository } from '../repositories/CategoryRepository';
 import { PayeeRepository } from '../repositories/PayeeRepository';
 import { BudgetRepository } from '../repositories/BudgetRepository';
+import { JournalEntryRepository } from '../repositories/JournalEntryRepository';
 
 export class DatabaseManager {
   private static instance: DatabaseManager;
@@ -16,6 +17,7 @@ export class DatabaseManager {
   private categoryRepository: CategoryRepository;
   private payeeRepository: PayeeRepository;
   private budgetRepository: BudgetRepository;
+  private journalEntryRepository: JournalEntryRepository;
   
   private constructor() {
     console.log('DatabaseManager constructor called - initializing repositories');
@@ -40,6 +42,9 @@ export class DatabaseManager {
       console.error('Failed to create budget repository:', error);
       throw error;
     }
+    
+    this.journalEntryRepository = new JournalEntryRepository();
+    console.log('✓ Journal entry repository created');
     
     console.log('All repositories created in DatabaseManager constructor');
   }
@@ -103,6 +108,10 @@ export class DatabaseManager {
       throw new Error('Budget repository not properly initialized');
     }
     return this.budgetRepository;
+  }
+  
+  public getJournalEntryRepository(): JournalEntryRepository {
+    return this.journalEntryRepository;
   }
   
   // Add getters for other repositories as they're implemented

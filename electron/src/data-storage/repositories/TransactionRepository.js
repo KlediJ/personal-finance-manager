@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TransactionRepository = void 0;
 const BaseRepository_1 = require("./BaseRepository");
+const Transaction_1 = require("../models/Transaction");
 class TransactionRepository extends BaseRepository_1.BaseRepository {
     constructor() {
         super('transactions');
@@ -18,18 +19,22 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
             status: row.status,
             payee_id: row.payee_id,
             payee_name: row.payee_name,
+            category_name: row.category_name,
             created_at: row.created_at,
-            updated_at: row.updated_at
+            updated_at: row.updated_at,
+            // Credit Card Transaction Logic enhancements - Phase 2
+            transaction_subtype: row.transaction_subtype
         };
     }
     /**
-     * Get all transactions with payee information
+     * Get all transactions with payee and category information
      */
     getAll() {
         const query = `
-      SELECT t.*, p.name as payee_name 
+      SELECT t.*, p.name as payee_name, c.name as category_name
       FROM ${this.tableName} t
       LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
       ORDER BY t.date DESC, t.transaction_id DESC
     `;
         return this.runQuery(query, []);
@@ -39,9 +44,10 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
      */
     getByAccountId(accountId) {
         const query = `
-      SELECT t.*, p.name as payee_name 
+      SELECT t.*, p.name as payee_name, c.name as category_name
       FROM ${this.tableName} t
       LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
       WHERE t.account_id = ?
       ORDER BY t.date DESC, t.transaction_id DESC
     `;
@@ -52,9 +58,10 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
      */
     getByDateRange(startDate, endDate) {
         const query = `
-      SELECT t.*, p.name as payee_name 
+      SELECT t.*, p.name as payee_name, c.name as category_name
       FROM ${this.tableName} t
       LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
       WHERE t.date >= ? AND t.date <= ?
       ORDER BY t.date DESC, t.transaction_id DESC
     `;
@@ -65,9 +72,10 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
      */
     getRecent(limit) {
         const query = `
-      SELECT t.*, p.name as payee_name 
+      SELECT t.*, p.name as payee_name, c.name as category_name
       FROM ${this.tableName} t
       LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
       ORDER BY t.date DESC, t.transaction_id DESC
       LIMIT ?
     `;
@@ -78,9 +86,10 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
      */
     searchByDescription(term) {
         const query = `
-      SELECT t.*, p.name as payee_name 
+      SELECT t.*, p.name as payee_name, c.name as category_name
       FROM ${this.tableName} t
       LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
       WHERE t.description LIKE ?
       ORDER BY t.date DESC, t.transaction_id DESC
     `;
@@ -91,9 +100,10 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
      */
     getByCategory(categoryId) {
         const query = `
-      SELECT t.*, p.name as payee_name 
+      SELECT t.*, p.name as payee_name, c.name as category_name
       FROM ${this.tableName} t
       LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
       WHERE t.category_id = ?
       ORDER BY t.date DESC, t.transaction_id DESC
     `;
@@ -104,9 +114,10 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
      */
     getByType(type) {
         const query = `
-      SELECT t.*, p.name as payee_name 
+      SELECT t.*, p.name as payee_name, c.name as category_name
       FROM ${this.tableName} t
       LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
       WHERE t.transaction_type = ?
       ORDER BY t.date DESC, t.transaction_id DESC
     `;
@@ -117,9 +128,10 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
      */
     getByStatus(status) {
         const query = `
-      SELECT t.*, p.name as payee_name 
+      SELECT t.*, p.name as payee_name, c.name as category_name
       FROM ${this.tableName} t
       LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
       WHERE t.status = ?
       ORDER BY t.date DESC, t.transaction_id DESC
     `;
@@ -155,6 +167,102 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
       ORDER BY total DESC
     `;
         return this.db.prepare(query).all(startDate, endDate);
+    }
+    // Credit Card Transaction Logic enhancements - Phase 2
+    /**
+     * Get transactions by subtype
+     */
+    getBySubtype(subtype) {
+        return this.findBy('transaction_subtype', subtype);
+    }
+    /**
+     * Get credit card purchases for an account
+     */
+    getCreditCardPurchases(accountId) {
+        const query = `
+      SELECT t.*, p.name as payee_name, c.name as category_name
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      WHERE t.account_id = ? AND t.transaction_subtype = ?
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+        return this.runQuery(query, [accountId, Transaction_1.TransactionSubtype.CREDIT_CARD_PURCHASE]);
+    }
+    /**
+     * Get credit card payments for an account
+     */
+    getCreditCardPayments(accountId) {
+        const query = `
+      SELECT t.*, p.name as payee_name, c.name as category_name
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      WHERE t.account_id = ? AND t.transaction_subtype = ?
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+        return this.runQuery(query, [accountId, Transaction_1.TransactionSubtype.CREDIT_CARD_PAYMENT]);
+    }
+    /**
+     * Create a credit card purchase transaction
+     */
+    createCreditCardPurchase(accountId, date, amount, description, categoryId, payeeId) {
+        const transaction = {
+            account_id: accountId,
+            date,
+            amount: Math.abs(amount), // Ensure positive amount for credit card purchases
+            description,
+            category_id: categoryId || null,
+            transaction_type: Transaction_1.TransactionType.EXPENSE,
+            transaction_subtype: Transaction_1.TransactionSubtype.CREDIT_CARD_PURCHASE,
+            status: Transaction_1.TransactionStatus.PENDING,
+            payee_id: payeeId || null
+        };
+        return this.create(transaction);
+    }
+    /**
+     * Create a credit card payment transaction
+     */
+    createCreditCardPayment(creditCardAccountId, paymentAmount, date, description = 'Credit Card Payment') {
+        const transaction = {
+            account_id: creditCardAccountId,
+            date,
+            amount: -Math.abs(paymentAmount), // Negative amount reduces credit card balance
+            description,
+            transaction_type: Transaction_1.TransactionType.TRANSFER,
+            transaction_subtype: Transaction_1.TransactionSubtype.CREDIT_CARD_PAYMENT,
+            status: Transaction_1.TransactionStatus.PENDING
+        };
+        return this.create(transaction);
+    }
+    /**
+     * Get credit card balance summary
+     */
+    getCreditCardBalanceSummary(accountId) {
+        const query = `
+      SELECT 
+        SUM(CASE WHEN transaction_subtype = ? THEN amount ELSE 0 END) as total_purchases,
+        SUM(CASE WHEN transaction_subtype = ? THEN amount ELSE 0 END) as total_payments,
+        SUM(amount) as current_balance
+      FROM ${this.tableName}
+      WHERE account_id = ?
+    `;
+        return this.db.prepare(query).get(Transaction_1.TransactionSubtype.CREDIT_CARD_PURCHASE, Transaction_1.TransactionSubtype.CREDIT_CARD_PAYMENT, accountId);
+    }
+    /**
+     * Get transactions that need proper subtype classification
+     */
+    getTransactionsNeedingSubtypeClassification() {
+        const query = `
+      SELECT t.*, p.name as payee_name, c.name as category_name, a.is_liability
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      LEFT JOIN accounts a ON t.account_id = a.account_id
+      WHERE t.transaction_subtype = 'standard' AND a.is_liability = 1
+      ORDER BY t.date DESC
+    `;
+        return this.runQuery(query, []);
     }
 }
 exports.TransactionRepository = TransactionRepository;

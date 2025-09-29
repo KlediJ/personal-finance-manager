@@ -16,7 +16,11 @@ export class AccountRepository extends BaseRepository<Account> {
       currency: row.currency,
       active: Boolean(row.active),
       created_at: row.created_at,
-      updated_at: row.updated_at
+      updated_at: row.updated_at,
+      // Chart of Accounts enhancements - Phase 1
+      account_class: row.account_class,
+      account_code: row.account_code,
+      is_liability: Boolean(row.is_liability)
     };
   }
   
@@ -61,5 +65,66 @@ export class AccountRepository extends BaseRepository<Account> {
    */
   public getAccountsByType(type: string): Account[] {
     return this.findBy('type', type);
+  }
+
+  // Chart of Accounts enhancements - Phase 1
+  
+  /**
+   * Get accounts by account class (Asset, Liability, Equity, etc.)
+   */
+  public getAccountsByClass(accountClass: string): Account[] {
+    return this.findBy('account_class', accountClass);
+  }
+
+  /**
+   * Get asset accounts (checking, savings, etc.)
+   */
+  public getAssetAccounts(): Account[] {
+    return this.getAccountsByClass('Asset');
+  }
+
+  /**
+   * Get liability accounts (credit cards, loans, etc.)
+   */
+  public getLiabilityAccounts(): Account[] {
+    return this.getAccountsByClass('Liability');
+  }
+
+  /**
+   * Get net worth calculation (Assets - Liabilities)
+   */
+  public getNetWorth(): number {
+    const query = `
+      SELECT 
+        SUM(CASE WHEN account_class = 'Asset' THEN current_balance ELSE 0 END) as assets,
+        SUM(CASE WHEN account_class = 'Liability' THEN current_balance ELSE 0 END) as liabilities
+      FROM accounts 
+      WHERE active = 1
+    `;
+    
+    const result = this.db.prepare(query).get() as { assets: number | null; liabilities: number | null };
+    const assets = result?.assets || 0;
+    const liabilities = result?.liabilities || 0;
+    
+    return assets - liabilities;
+  }
+
+  /**
+   * Get Chart of Accounts summary
+   */
+  public getChartOfAccountsSummary(): any[] {
+    const query = `
+      SELECT 
+        account_class,
+        account_code,
+        COUNT(*) as account_count,
+        SUM(current_balance) as total_balance
+      FROM accounts 
+      WHERE active = 1
+      GROUP BY account_class, account_code
+      ORDER BY account_code
+    `;
+    
+    return this.db.prepare(query).all();
   }
 }

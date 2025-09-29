@@ -22,6 +22,8 @@ class SchemaInitializer {
         this.createLoanDetailsTable(db);
         this.createAmortizationScheduleTable(db);
         this.createInterestExpensesTable(db);
+        // Double-entry accounting tables
+        this.createJournalEntriesTable(db);
         // AI model storage and learning tables
         this.createAIModelsTable(db);
         this.createAILearningDataTable(db);
@@ -44,6 +46,51 @@ class SchemaInitializer {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+        // Chart of Accounts enhancements - Phase 1
+        // Add account_class column for proper accounting classification
+        db.exec(`
+      ALTER TABLE accounts ADD COLUMN account_class TEXT DEFAULT 'Asset';
+    `);
+        // Add account_code column for numbering system (1000-Assets, 2000-Liabilities, etc.)
+        db.exec(`
+      ALTER TABLE accounts ADD COLUMN account_code TEXT;
+    `);
+        // Add is_liability flag for credit card transaction logic
+        db.exec(`
+      ALTER TABLE accounts ADD COLUMN is_liability INTEGER DEFAULT 0;
+    `);
+        console.log('Chart of Accounts enhancements applied to accounts table');
+        // Migrate existing account data to new Chart of Accounts structure
+        this.migrateAccountClassifications(db);
+    }
+    static migrateAccountClassifications(db) {
+        // Update existing accounts with proper Chart of Accounts classifications
+        console.log('Migrating existing accounts to Chart of Accounts structure...');
+        // Asset accounts (1000-1999)
+        db.exec(`
+      UPDATE accounts 
+      SET account_class = 'Asset', 
+          account_code = CASE 
+            WHEN type = 'checking' THEN '1100'
+            WHEN type = 'savings' THEN '1200'
+            ELSE '1000'
+          END,
+          is_liability = 0
+      WHERE type IN ('checking', 'savings');
+    `);
+        // Liability accounts (2000-2999)
+        db.exec(`
+      UPDATE accounts 
+      SET account_class = 'Liability', 
+          account_code = CASE 
+            WHEN type = 'credit_card' THEN '2100'
+            WHEN type = 'loan' THEN '2200'
+            ELSE '2000'
+          END,
+          is_liability = 1
+      WHERE type IN ('credit_card', 'loan');
+    `);
+        console.log('Account classifications migrated successfully');
     }
     static createCategoriesTable(db) {
         db.exec(`
@@ -90,6 +137,25 @@ class SchemaInitializer {
         FOREIGN KEY (payee_id) REFERENCES payees (payee_id)
       )
     `);
+        // Credit Card Transaction Logic enhancements - Phase 2
+        // Add transaction_subtype for detailed credit card handling
+        db.exec(`
+      ALTER TABLE transactions ADD COLUMN transaction_subtype TEXT DEFAULT 'standard';
+    `);
+        console.log('Credit card transaction logic enhancements applied to transactions table');
+        // Migrate existing transaction data
+        this.migrateTransactionSubtypes(db);
+    }
+    static migrateTransactionSubtypes(db) {
+        console.log('Migrating existing transactions with subtypes...');
+        // Standard transactions keep default subtype
+        // This migration sets the foundation for future credit card logic
+        db.exec(`
+      UPDATE transactions 
+      SET transaction_subtype = 'standard'
+      WHERE transaction_subtype IS NULL;
+    `);
+        console.log('Transaction subtypes migrated successfully');
     }
     static createBudgetsTable(db) {
         db.exec(`
@@ -354,6 +420,23 @@ class SchemaInitializer {
         measurement_period_end TIMESTAMP,
         sample_size INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    }
+    static createJournalEntriesTable(db) {
+        db.exec(`
+      CREATE TABLE IF NOT EXISTS journal_entries (
+        journal_entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_id INTEGER NOT NULL,
+        account_id INTEGER NOT NULL,
+        entry_type TEXT NOT NULL CHECK (entry_type IN ('debit', 'credit')),
+        amount REAL NOT NULL CHECK (amount > 0),
+        description TEXT,
+        reference_number TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (transaction_id) REFERENCES transactions (transaction_id) ON DELETE CASCADE,
+        FOREIGN KEY (account_id) REFERENCES accounts (account_id) ON DELETE CASCADE
       )
     `);
     }

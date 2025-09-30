@@ -23,6 +23,7 @@ import {
 import { Account } from '../../../data-storage/models/Account';
 import { Category } from '../../../data-storage/models/Category';
 import { Payee } from '../../../data-storage/models/Payee';
+import { PayeeExtractor } from '../../../data-processing/ai/PayeeExtractor';
 
 interface TransactionFormDialogProps {
   open: boolean;
@@ -124,7 +125,27 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
       
       setFormValues({ ...formValues, [name]: numberValue });
     } else {
-      setFormValues({ ...formValues, [name]: value });
+      const updatedValues = { ...formValues, [name]: value };
+      
+      // Auto-extract payee from description if description field changed
+      if (name === 'description' && value.trim()) {
+        const extractedPayee = PayeeExtractor.extractPayeeFromDescription(value);
+        if (extractedPayee) {
+          // Find existing payee or prepare to create new one
+          const existingPayee = payees.find(p => p.name.toLowerCase() === extractedPayee.toLowerCase());
+          if (existingPayee) {
+            updatedValues.payee_id = existingPayee.payee_id;
+            updatedValues.payee_name = existingPayee.name;
+          } else {
+            // Store payee name for creation during save
+            updatedValues.payee_name = extractedPayee;
+            updatedValues.payee_id = null;
+          }
+          console.log(`Auto-extracted payee "${extractedPayee}" from description`);
+        }
+      }
+      
+      setFormValues(updatedValues);
     }
   };
 
@@ -202,7 +223,7 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
   };
 
   // Handle form submission
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (validateForm()) {
       // Ensure we have created_at and updated_at values
       const now = new Date().toISOString();
@@ -214,6 +235,14 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
       // Add created_at for new transactions
       if (!transaction) {
         transactionToSave.created_at = now;
+      }
+      
+      // If user selected a payee, make sure we have the payee_name for display
+      if (transactionToSave.payee_id && !transactionToSave.payee_name) {
+        const selectedPayee = payees.find(p => p.payee_id === transactionToSave.payee_id);
+        if (selectedPayee) {
+          transactionToSave.payee_name = selectedPayee.name;
+        }
       }
       
       onSave(transactionToSave);
@@ -283,7 +312,7 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
               >
                 <MenuItem value={TransactionType.EXPENSE}>Expense</MenuItem>
                 <MenuItem value={TransactionType.INCOME}>Income</MenuItem>
-                <MenuItem value={TransactionType.TRANSFER}>Transfer</MenuItem>
+                {/* Transfer removed - use dedicated Transfer Dialog */}
               </Select>
             </FormControl>
           </Grid>

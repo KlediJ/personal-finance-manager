@@ -32,12 +32,14 @@ import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import CalculateIcon from '@mui/icons-material/Calculate';
 import { Transaction, TransactionType, TransactionStatus } from '../../../data-storage/models/Transaction';
 import { Account } from '../../../data-storage/models/Account';
 import { Category } from '../../../data-storage/models/Category';
 import TransactionFormDialog from './TransactionFormDialog';
 import ImportWizard from '../import-export/ImportWizard';
 import ExportDialog from '../import-export/ExportDialog';
+import TransferDialog from '../../components/TransferDialog';
 
 const TransactionsPage: React.FC = () => {
   // State for transactions and loading
@@ -58,16 +60,17 @@ const TransactionsPage: React.FC = () => {
   const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   
+  // State for transfer dialog
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  
   // State for filters
   const [filterOpen, setFilterOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<number | ''>('');
   const [selectedType, setSelectedType] = useState<string | ''>('');
   const [selectedStatus, setSelectedStatus] = useState<string | ''>('');
-  const [startDate, setStartDate] = useState<Date | null>(
-    new Date(new Date().setMonth(new Date().getMonth() - 1))
-  );
-  const [endDate, setEndDate] = useState<Date | null>(new Date());
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
   
   // State for notifications
   const [snackbar, setSnackbar] = useState<{ open: boolean, message: string, severity: 'success' | 'error' | 'warning' }>({
@@ -169,7 +172,7 @@ const TransactionsPage: React.FC = () => {
         if (result.success) {
           setSnackbar({
             open: true,
-            message: 'Transaction created successfully',
+            message: 'Transaction created successfully with double-entry accounting',
             severity: 'success'
           });
         } else {
@@ -215,8 +218,8 @@ const TransactionsPage: React.FC = () => {
     setSelectedAccount('');
     setSelectedType('');
     setSelectedStatus('');
-    setStartDate(new Date(new Date().setMonth(new Date().getMonth() - 1)));
-    setEndDate(new Date());
+    setStartDate(null);
+    setEndDate(null);
     loadTransactions();
   };
 
@@ -271,6 +274,40 @@ const TransactionsPage: React.FC = () => {
     setTransactionToDelete(null);
   };
 
+  // Handle balance recalculation
+  const handleRecalculateBalances = async () => {
+    try {
+      setSnackbar({
+        open: true,
+        message: 'Recalculating account balances...',
+        severity: 'warning'
+      });
+      
+      const result = await window.api.transactions.recalculateBalances();
+      
+      if (result.success) {
+        setSnackbar({
+          open: true,
+          message: 'Account balances recalculated successfully',
+          severity: 'success'
+        });
+        
+        // Refresh transactions to show updated balances
+        loadTransactions();
+      } else {
+        throw new Error('Balance recalculation failed');
+      }
+    } catch (error) {
+      console.error('Error recalculating balances:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to recalculate balances: ' + (error as Error).message,
+        severity: 'error'
+      });
+    }
+  };
+
+
   // Handle bulk delete
   const handleBulkDeleteConfirm = async () => {
     if (selectedTransactions.length > 0) {
@@ -311,6 +348,7 @@ const TransactionsPage: React.FC = () => {
     setBulkDeleteConfirmOpen(false);
     setSelectedTransactions([]);
   };
+
 
   // Toggle transaction selection
   const handleToggleSelect = (id: number) => {
@@ -417,6 +455,14 @@ const TransactionsPage: React.FC = () => {
           >
             Export
           </Button>
+          <Button
+            variant="outlined"
+            startIcon={<CalculateIcon />}
+            onClick={handleRecalculateBalances}
+            color="secondary"
+          >
+            Recalculate Balances
+          </Button>
           {selectedTransactions.length > 0 && (
             <Button 
               variant="outlined" 
@@ -431,8 +477,16 @@ const TransactionsPage: React.FC = () => {
             variant="contained" 
             startIcon={<AddIcon />}
             onClick={handleAddTransaction}
+            sx={{ mr: 1 }}
           >
             Add Transaction
+          </Button>
+          <Button 
+            variant="outlined" 
+            color="primary"
+            onClick={() => setTransferDialogOpen(true)}
+          >
+            Transfer
           </Button>
         </Box>
       </Box>
@@ -763,6 +817,22 @@ const TransactionsPage: React.FC = () => {
       <ExportDialog
         open={exportDialogOpen}
         onClose={() => setExportDialogOpen(false)}
+      />
+      
+      {/* Transfer Dialog */}
+      <TransferDialog
+        open={transferDialogOpen}
+        onClose={() => setTransferDialogOpen(false)}
+        onTransferComplete={(success, message) => {
+          setSnackbar({
+            open: true,
+            message: message,
+            severity: success ? 'success' : 'error'
+          });
+          if (success) {
+            loadTransactions(); // Refresh transactions list
+          }
+        }}
       />
     </Box>
   );

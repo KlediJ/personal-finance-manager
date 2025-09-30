@@ -35,6 +35,7 @@
     "db:reset": "node scripts/reset-db.js",
     "db:init": "node scripts/init-db.js",
     "db:setup": "npm run rebuild-sqlite && npm run db:init",
+    "payees:backfill": "node scripts/backfill-payees.js",
     "build:webpack": "webpack --config webpack.config.js",
     "build:electron": "tsc -p electron/tsconfig-electron.json",
     "clean:electron": "rm -f electron/*.js electron/*.js.map",

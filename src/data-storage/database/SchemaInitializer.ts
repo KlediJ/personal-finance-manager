@@ -66,6 +66,11 @@ export class SchemaInitializer {
     db.exec(`
       ALTER TABLE accounts ADD COLUMN is_liability INTEGER DEFAULT 0;
     `);
+    
+    // Add is_virtual flag for virtual accounting accounts (Phase 3 - Accounting Service Enhancement)
+    db.exec(`
+      ALTER TABLE accounts ADD COLUMN is_virtual INTEGER DEFAULT 0;
+    `);
 
     console.log('Chart of Accounts enhancements applied to accounts table');
     

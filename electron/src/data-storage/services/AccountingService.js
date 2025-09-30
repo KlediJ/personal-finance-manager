@@ -2,21 +2,26 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AccountingService = void 0;
 const DatabaseManager_1 = require("../database/DatabaseManager");
+const DatabaseConnection_1 = require("../database/DatabaseConnection");
 const Transaction_1 = require("../models/Transaction");
 const JournalEntryRepository_1 = require("../repositories/JournalEntryRepository");
+const VirtualAccountManager_1 = require("./VirtualAccountManager");
 class AccountingService {
     constructor() {
         this.journalEntryRepository = new JournalEntryRepository_1.JournalEntryRepository();
+        this.virtualAccountManager = new VirtualAccountManager_1.VirtualAccountManager();
     }
     /**
      * Create a transaction with proper double-entry accounting
      */
     createTransaction(transaction) {
         const dbManager = DatabaseManager_1.DatabaseManager.getInstance();
+        const db = DatabaseConnection_1.DatabaseConnection.getInstance();
         const transactionRepo = dbManager.getTransactionRepository();
         const accountRepo = dbManager.getAccountRepository();
         const payeeRepo = dbManager.getPayeeRepository();
-        try {
+        // Wrap all operations in a database transaction for atomicity
+        return db.transaction(() => {
             // Handle payee creation/assignment if needed
             if (transaction.payee_name && !transaction.payee_id) {
                 // Try to find existing payee by name
@@ -41,20 +46,18 @@ class AccountingService {
             // Update account balances
             this.updateAccountBalances(transaction);
             return { transactionId, success: true };
-        }
-        catch (error) {
-            console.error('Error creating transaction:', error);
-            throw error;
-        }
+        })();
     }
     /**
      * Update a transaction and its journal entries
      */
     updateTransaction(transactionId, transaction) {
         const dbManager = DatabaseManager_1.DatabaseManager.getInstance();
+        const db = DatabaseConnection_1.DatabaseConnection.getInstance();
         const transactionRepo = dbManager.getTransactionRepository();
         const payeeRepo = dbManager.getPayeeRepository();
-        try {
+        // Wrap all operations in a database transaction for atomicity
+        return db.transaction(() => {
             // Get the original transaction to reverse its effects
             const originalTransaction = transactionRepo.getById(transactionId);
             if (!originalTransaction) {
@@ -90,19 +93,17 @@ class AccountingService {
                 this.updateAccountBalances(transaction);
             }
             return success;
-        }
-        catch (error) {
-            console.error('Error updating transaction:', error);
-            throw error;
-        }
+        })();
     }
     /**
      * Delete a transaction and reverse its accounting effects
      */
     deleteTransaction(transactionId) {
         const dbManager = DatabaseManager_1.DatabaseManager.getInstance();
+        const db = DatabaseConnection_1.DatabaseConnection.getInstance();
         const transactionRepo = dbManager.getTransactionRepository();
-        try {
+        // Wrap all operations in a database transaction for atomicity
+        return db.transaction(() => {
             // Get the transaction to reverse its effects
             const transaction = transactionRepo.getById(transactionId);
             if (!transaction) {
@@ -114,11 +115,7 @@ class AccountingService {
             this.journalEntryRepository.deleteByTransactionId(transactionId);
             // Delete the transaction
             return transactionRepo.delete(transactionId);
-        }
-        catch (error) {
-            console.error('Error deleting transaction:', error);
-            throw error;
-        }
+        })();
     }
     /**
      * Create journal entries based on transaction type
@@ -133,10 +130,10 @@ class AccountingService {
         const amount = Math.abs(transaction.amount);
         switch (transaction.transaction_type) {
             case Transaction_1.TransactionType.INCOME:
-                this.createIncomeJournalEntries(transactionId, account, amount, transaction.description);
+                this.createIncomeJournalEntries(transactionId, account, amount, transaction.description, transaction.category_id || undefined);
                 break;
             case Transaction_1.TransactionType.EXPENSE:
-                this.createExpenseJournalEntries(transactionId, account, amount, transaction.description);
+                this.createExpenseJournalEntries(transactionId, account, amount, transaction.description, transaction.category_id || undefined);
                 break;
             case Transaction_1.TransactionType.TRANSFER:
                 // Transfer logic will be handled separately
@@ -146,11 +143,11 @@ class AccountingService {
     /**
      * Create journal entries for income transactions
      */
-    createIncomeJournalEntries(transactionId, account, amount, description) {
+    createIncomeJournalEntries(transactionId, account, amount, description, categoryId) {
         // For cash basis accounting:
         // Debit: Asset account (increase cash/bank balance)
         // Credit: Income account (virtual income category account)
-        const incomeAccountId = this.getOrCreateIncomeAccount();
+        const incomeAccountId = this.virtualAccountManager.getOrCreateVirtualIncomeAccount(categoryId);
         this.journalEntryRepository.createDoubleEntry(transactionId, account.account_id, // Debit the asset account
         incomeAccountId, // Credit the income account
         amount, description);
@@ -158,11 +155,11 @@ class AccountingService {
     /**
      * Create journal entries for expense transactions
      */
-    createExpenseJournalEntries(transactionId, account, amount, description) {
+    createExpenseJournalEntries(transactionId, account, amount, description, categoryId) {
         // For cash basis accounting:
         // Debit: Expense account (virtual expense category account)
         // Credit: Asset account (decrease cash/bank balance)
-        const expenseAccountId = this.getOrCreateExpenseAccount();
+        const expenseAccountId = this.virtualAccountManager.getOrCreateVirtualExpenseAccount(categoryId);
         this.journalEntryRepository.createDoubleEntry(transactionId, expenseAccountId, // Debit the expense account
         account.account_id, // Credit the asset account
         amount, description);
@@ -172,9 +169,11 @@ class AccountingService {
      */
     createTransfer(fromAccountId, toAccountId, amount, description, date) {
         const dbManager = DatabaseManager_1.DatabaseManager.getInstance();
+        const db = DatabaseConnection_1.DatabaseConnection.getInstance();
         const transactionRepo = dbManager.getTransactionRepository();
         const accountRepo = dbManager.getAccountRepository();
-        try {
+        // Wrap all operations in a database transaction for atomicity
+        return db.transaction(() => {
             const fromAccount = accountRepo.getById(fromAccountId);
             const toAccount = accountRepo.getById(toAccountId);
             if (!fromAccount || !toAccount) {
@@ -210,11 +209,7 @@ class AccountingService {
             this.updateAccountBalance(fromAccountId);
             this.updateAccountBalance(toAccountId);
             return { fromTransactionId, toTransactionId, success: true };
-        }
-        catch (error) {
-            console.error('Error creating transfer:', error);
-            throw error;
-        }
+        })();
     }
     /**
      * Update account balances based on journal entries
@@ -258,22 +253,20 @@ class AccountingService {
         }
     }
     /**
-     * Get or create virtual income account for double-entry
+     * Initialize accounting system and migrate any existing placeholder accounts
+     * This should be called once during application startup
      */
-    getOrCreateIncomeAccount() {
-        // This would ideally be a virtual account or category-based account
-        // For now, return a placeholder account ID
-        // In a full implementation, you'd create virtual accounts for each category
-        return 999999; // Virtual income account ID
-    }
-    /**
-     * Get or create virtual expense account for double-entry
-     */
-    getOrCreateExpenseAccount() {
-        // This would ideally be a virtual account or category-based account
-        // For now, return a placeholder account ID
-        // In a full implementation, you'd create virtual accounts for each category
-        return 999998; // Virtual expense account ID
+    initializeAccounting() {
+        try {
+            // Run the migration to convert any existing placeholder accounts
+            const migrationResults = this.virtualAccountManager.migratePlaceholderAccounts();
+            console.log('Accounting system initialized successfully', migrationResults);
+            return { success: true, migrationResults };
+        }
+        catch (error) {
+            console.error('Error initializing accounting system:', error);
+            return { success: false };
+        }
     }
     /**
      * Recalculate all account balances from journal entries

@@ -1,14 +1,18 @@
 import { DatabaseManager } from '../database/DatabaseManager';
+import { DatabaseConnection } from '../database/DatabaseConnection';
 import { Transaction, TransactionType } from '../models/Transaction';
 import { Account, AccountType } from '../models/Account';
 import { JournalEntry, JournalEntryType } from '../models/JournalEntry';
 import { JournalEntryRepository } from '../repositories/JournalEntryRepository';
+import { VirtualAccountManager } from './VirtualAccountManager';
 
 export class AccountingService {
   private journalEntryRepository: JournalEntryRepository;
+  private virtualAccountManager: VirtualAccountManager;
   
   constructor() {
     this.journalEntryRepository = new JournalEntryRepository();
+    this.virtualAccountManager = new VirtualAccountManager();
   }
   
   /**
@@ -16,11 +20,13 @@ export class AccountingService {
    */
   public createTransaction(transaction: Transaction): { transactionId: number; success: boolean } {
     const dbManager = DatabaseManager.getInstance();
+    const db = DatabaseConnection.getInstance();
     const transactionRepo = dbManager.getTransactionRepository();
     const accountRepo = dbManager.getAccountRepository();
     const payeeRepo = dbManager.getPayeeRepository();
     
-    try {
+    // Wrap all operations in a database transaction for atomicity
+    return db.transaction(() => {
       // Handle payee creation/assignment if needed
       if (transaction.payee_name && !transaction.payee_id) {
         // Try to find existing payee by name
@@ -48,10 +54,7 @@ export class AccountingService {
       this.updateAccountBalances(transaction);
       
       return { transactionId, success: true };
-    } catch (error) {
-      console.error('Error creating transaction:', error);
-      throw error;
-    }
+    })();
   }
   
   /**
@@ -59,10 +62,12 @@ export class AccountingService {
    */
   public updateTransaction(transactionId: number, transaction: Transaction): boolean {
     const dbManager = DatabaseManager.getInstance();
+    const db = DatabaseConnection.getInstance();
     const transactionRepo = dbManager.getTransactionRepository();
     const payeeRepo = dbManager.getPayeeRepository();
     
-    try {
+    // Wrap all operations in a database transaction for atomicity
+    return db.transaction(() => {
       // Get the original transaction to reverse its effects
       const originalTransaction = transactionRepo.getById(transactionId);
       if (!originalTransaction) {
@@ -104,10 +109,7 @@ export class AccountingService {
       }
       
       return success;
-    } catch (error) {
-      console.error('Error updating transaction:', error);
-      throw error;
-    }
+    })();
   }
   
   /**
@@ -115,9 +117,11 @@ export class AccountingService {
    */
   public deleteTransaction(transactionId: number): boolean {
     const dbManager = DatabaseManager.getInstance();
+    const db = DatabaseConnection.getInstance();
     const transactionRepo = dbManager.getTransactionRepository();
     
-    try {
+    // Wrap all operations in a database transaction for atomicity
+    return db.transaction(() => {
       // Get the transaction to reverse its effects
       const transaction = transactionRepo.getById(transactionId);
       if (!transaction) {
@@ -132,10 +136,7 @@ export class AccountingService {
       
       // Delete the transaction
       return transactionRepo.delete(transactionId);
-    } catch (error) {
-      console.error('Error deleting transaction:', error);
-      throw error;
-    }
+    })();
   }
   
   /**
@@ -154,11 +155,23 @@ export class AccountingService {
     
     switch (transaction.transaction_type) {
       case TransactionType.INCOME:
-        this.createIncomeJournalEntries(transactionId, account, amount, transaction.description);
+        this.createIncomeJournalEntries(
+          transactionId, 
+          account, 
+          amount, 
+          transaction.description, 
+          transaction.category_id || undefined
+        );
         break;
         
       case TransactionType.EXPENSE:
-        this.createExpenseJournalEntries(transactionId, account, amount, transaction.description);
+        this.createExpenseJournalEntries(
+          transactionId, 
+          account, 
+          amount, 
+          transaction.description, 
+          transaction.category_id || undefined
+        );
         break;
         
       case TransactionType.TRANSFER:
@@ -174,13 +187,14 @@ export class AccountingService {
     transactionId: number,
     account: Account,
     amount: number,
-    description?: string
+    description?: string,
+    categoryId?: number
   ): void {
     // For cash basis accounting:
     // Debit: Asset account (increase cash/bank balance)
     // Credit: Income account (virtual income category account)
     
-    const incomeAccountId = this.getOrCreateIncomeAccount();
+    const incomeAccountId = this.virtualAccountManager.getOrCreateVirtualIncomeAccount(categoryId);
     
     this.journalEntryRepository.createDoubleEntry(
       transactionId,
@@ -198,13 +212,14 @@ export class AccountingService {
     transactionId: number,
     account: Account,
     amount: number,
-    description?: string
+    description?: string,
+    categoryId?: number
   ): void {
     // For cash basis accounting:
     // Debit: Expense account (virtual expense category account)
     // Credit: Asset account (decrease cash/bank balance)
     
-    const expenseAccountId = this.getOrCreateExpenseAccount();
+    const expenseAccountId = this.virtualAccountManager.getOrCreateVirtualExpenseAccount(categoryId);
     
     this.journalEntryRepository.createDoubleEntry(
       transactionId,
@@ -226,10 +241,12 @@ export class AccountingService {
     date?: string
   ): { fromTransactionId: number; toTransactionId: number; success: boolean } {
     const dbManager = DatabaseManager.getInstance();
+    const db = DatabaseConnection.getInstance();
     const transactionRepo = dbManager.getTransactionRepository();
     const accountRepo = dbManager.getAccountRepository();
     
-    try {
+    // Wrap all operations in a database transaction for atomicity
+    return db.transaction(() => {
       const fromAccount = accountRepo.getById(fromAccountId);
       const toAccount = accountRepo.getById(toAccountId);
       
@@ -277,10 +294,7 @@ export class AccountingService {
       this.updateAccountBalance(toAccountId);
       
       return { fromTransactionId, toTransactionId, success: true };
-    } catch (error) {
-      console.error('Error creating transfer:', error);
-      throw error;
-    }
+    })();
   }
   
   /**
@@ -334,23 +348,20 @@ export class AccountingService {
   }
   
   /**
-   * Get or create virtual income account for double-entry
+   * Initialize accounting system and migrate any existing placeholder accounts
+   * This should be called once during application startup
    */
-  private getOrCreateIncomeAccount(): number {
-    // This would ideally be a virtual account or category-based account
-    // For now, return a placeholder account ID
-    // In a full implementation, you'd create virtual accounts for each category
-    return 999999; // Virtual income account ID
-  }
-  
-  /**
-   * Get or create virtual expense account for double-entry
-   */
-  private getOrCreateExpenseAccount(): number {
-    // This would ideally be a virtual account or category-based account
-    // For now, return a placeholder account ID
-    // In a full implementation, you'd create virtual accounts for each category
-    return 999998; // Virtual expense account ID
+  public initializeAccounting(): { success: boolean; migrationResults?: any } {
+    try {
+      // Run the migration to convert any existing placeholder accounts
+      const migrationResults = this.virtualAccountManager.migratePlaceholderAccounts();
+      
+      console.log('Accounting system initialized successfully', migrationResults);
+      return { success: true, migrationResults };
+    } catch (error) {
+      console.error('Error initializing accounting system:', error);
+      return { success: false };
+    }
   }
   
   /**

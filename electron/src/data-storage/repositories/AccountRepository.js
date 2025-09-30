@@ -20,7 +20,9 @@ class AccountRepository extends BaseRepository_1.BaseRepository {
             // Chart of Accounts enhancements - Phase 1
             account_class: row.account_class,
             account_code: row.account_code,
-            is_liability: Boolean(row.is_liability)
+            is_liability: Boolean(row.is_liability),
+            // Phase 3 - Accounting Service Enhancement
+            is_virtual: Boolean(row.is_virtual)
         };
     }
     // Custom methods specific to accounts

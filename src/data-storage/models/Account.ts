@@ -29,6 +29,8 @@ export interface Account {
   account_class?: AccountClass;
   account_code?: string;
   is_liability?: boolean;
+  // Phase 3 - Accounting Service Enhancement
+  is_virtual?: boolean;
 }
 
 export interface AccountDetails {

@@ -3,12 +3,47 @@ function setupTransactionHandlers() {
   // Get all transactions
   ipcMain.handle('transactions:getAll', () => {
     const stmt = db.prepare(`
-      SELECT t.*, c.name as category_name 
+      SELECT t.*, c.name as category_name, p.name as payee_name 
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.category_id
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
       ORDER BY date DESC
     `);
-    return stmt.all();
+    const results = stmt.all();
+    
+    // Debug: Log first few transactions to see what's being returned
+    console.log('=== TRANSACTION DEBUG ===');
+    console.log('Total transactions:', results.length);
+    
+    // Check payees table
+    const payeeCount = db.prepare('SELECT COUNT(*) as count FROM payees').get();
+    console.log('Total payees in database:', payeeCount.count);
+    
+    if (payeeCount.count > 0) {
+      const samplePayees = db.prepare('SELECT * FROM payees LIMIT 3').all();
+      console.log('Sample payees:', samplePayees.map(p => ({ id: p.payee_id, name: p.name })));
+    }
+    
+    if (results.length > 0) {
+      console.log('Sample transaction:', {
+        id: results[0].transaction_id,
+        description: results[0].description,
+        payee_id: results[0].payee_id,
+        payee_name: results[0].payee_name
+      });
+      
+      // Count how many have payees
+      const withPayees = results.filter(t => t.payee_name).length;
+      console.log('Transactions with payees:', withPayees);
+      
+      // Check if any transactions have payee_id but no payee_name
+      const brokenJoins = results.filter(t => t.payee_id && !t.payee_name).length;
+      if (brokenJoins > 0) {
+        console.log('WARNING: Transactions with payee_id but no payee_name:', brokenJoins);
+      }
+    }
+    
+    return results;
   });
   
   // Get transaction by ID
@@ -20,9 +55,10 @@ function setupTransactionHandlers() {
   // Get transactions by account ID
   ipcMain.handle('transactions:getByAccountId', (_, accountId) => {
     const stmt = db.prepare(`
-      SELECT t.*, c.name as category_name 
+      SELECT t.*, c.name as category_name, p.name as payee_name 
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.category_id
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
       WHERE t.account_id = ? 
       ORDER BY date DESC
     `);
@@ -32,9 +68,10 @@ function setupTransactionHandlers() {
   // Get transactions by date range
   ipcMain.handle('transactions:getByDateRange', (_, startDate, endDate) => {
     const stmt = db.prepare(`
-      SELECT t.*, c.name as category_name 
+      SELECT t.*, c.name as category_name, p.name as payee_name 
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.category_id
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
       WHERE date >= ? AND date <= ? 
       ORDER BY date DESC
     `);
@@ -44,9 +81,10 @@ function setupTransactionHandlers() {
   // Get recent transactions
   ipcMain.handle('transactions:getRecent', (_, limit) => {
     const stmt = db.prepare(`
-      SELECT t.*, c.name as category_name 
+      SELECT t.*, c.name as category_name, p.name as payee_name 
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.category_id
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
       ORDER BY date DESC, transaction_id DESC LIMIT ?
     `);
     return stmt.all(limit);
@@ -54,7 +92,14 @@ function setupTransactionHandlers() {
   
   // Search transactions by description
   ipcMain.handle('transactions:searchByDescription', (_, term) => {
-    const stmt = db.prepare('SELECT * FROM transactions WHERE description LIKE ? ORDER BY date DESC');
+    const stmt = db.prepare(`
+      SELECT t.*, c.name as category_name, p.name as payee_name 
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.description LIKE ? 
+      ORDER BY t.date DESC
+    `);
     return stmt.all(`%${term}%`);
   });
   
@@ -258,22 +303,216 @@ function setupTransactionHandlers() {
   
   // Get transactions by category
   ipcMain.handle('transactions:getByCategory', (_, categoryId) => {
-    const stmt = db.prepare('SELECT * FROM transactions WHERE category_id = ? ORDER BY date DESC');
+    const stmt = db.prepare(`
+      SELECT t.*, c.name as category_name, p.name as payee_name 
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.category_id = ? 
+      ORDER BY t.date DESC
+    `);
     return stmt.all(categoryId);
   });
   
   // Get transactions by type
   ipcMain.handle('transactions:getByType', (_, type) => {
-    const stmt = db.prepare('SELECT * FROM transactions WHERE transaction_type = ? ORDER BY date DESC');
+    const stmt = db.prepare(`
+      SELECT t.*, c.name as category_name, p.name as payee_name 
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.transaction_type = ? 
+      ORDER BY t.date DESC
+    `);
     return stmt.all(type);
   });
   
   // Get transactions by status
   ipcMain.handle('transactions:getByStatus', (_, status) => {
-    const stmt = db.prepare('SELECT * FROM transactions WHERE status = ? ORDER BY date DESC');
+    const stmt = db.prepare(`
+      SELECT t.*, c.name as category_name, p.name as payee_name 
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      WHERE t.status = ? 
+      ORDER BY t.date DESC
+    `);
     return stmt.all(status);
   });
   
+  // Create transfer between accounts
+  ipcMain.handle('transactions:createTransfer', (_, fromAccountId, toAccountId, amount, description, date) => {
+    try {
+      const transferDate = date || new Date().toISOString().split('T')[0];
+      const transferAmount = Math.abs(amount);
+      
+      // Get account names for descriptions
+      const fromAccount = db.prepare('SELECT name FROM accounts WHERE account_id = ?').get(fromAccountId);
+      const toAccount = db.prepare('SELECT name FROM accounts WHERE account_id = ?').get(toAccountId);
+      
+      if (!fromAccount || !toAccount) {
+        throw new Error('One or both accounts not found');
+      }
+      
+      // Start transaction
+      db.prepare('BEGIN').run();
+      
+      try {
+        // Create "from" transaction (outgoing transfer)
+        const fromTransactionStmt = db.prepare(`
+          INSERT INTO transactions (account_id, date, amount, description, transaction_type, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 'transfer', 'cleared', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `);
+        
+        const fromTransactionId = fromTransactionStmt.run(
+          fromAccountId,
+          transferDate,
+          -transferAmount,
+          description || `Transfer to ${toAccount.name}`
+        ).lastInsertRowid;
+        
+        // Create "to" transaction (incoming transfer)
+        const toTransactionStmt = db.prepare(`
+          INSERT INTO transactions (account_id, date, amount, description, transaction_type, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 'transfer', 'cleared', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `);
+        
+        const toTransactionId = toTransactionStmt.run(
+          toAccountId,
+          transferDate,
+          transferAmount,
+          description || `Transfer from ${fromAccount.name}`
+        ).lastInsertRowid;
+        
+        // Update account balances
+        const updateFromBalance = db.prepare(`
+          UPDATE accounts 
+          SET current_balance = current_balance - ?, updated_at = CURRENT_TIMESTAMP
+          WHERE account_id = ?
+        `);
+        
+        const updateToBalance = db.prepare(`
+          UPDATE accounts 
+          SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP
+          WHERE account_id = ?
+        `);
+        
+        updateFromBalance.run(transferAmount, fromAccountId);
+        updateToBalance.run(transferAmount, toAccountId);
+        
+        // Commit transaction
+        db.prepare('COMMIT').run();
+        
+        return { fromTransactionId, toTransactionId, success: true };
+      } catch (error) {
+        db.prepare('ROLLBACK').run();
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error creating transfer:', error);
+      throw error;
+    }
+  });
+  
+  // Bulk assign payee to transactions
+  ipcMain.handle('transactions:bulkAssignPayee', (_, transactionIds, payeeId) => {
+    try {
+      if (!Array.isArray(transactionIds) || transactionIds.length === 0) {
+        throw new Error('No transaction IDs provided');
+      }
+      
+      db.prepare('BEGIN').run();
+      
+      const updateStmt = db.prepare(`
+        UPDATE transactions 
+        SET payee_id = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE transaction_id = ?
+      `);
+      
+      let updatedCount = 0;
+      for (const transactionId of transactionIds) {
+        const result = updateStmt.run(payeeId, transactionId);
+        if (result.changes > 0) {
+          updatedCount++;
+        }
+      }
+      
+      db.prepare('COMMIT').run();
+      
+      return { success: true, count: updatedCount };
+    } catch (error) {
+      db.prepare('ROLLBACK').run();
+      console.error('Error in bulk payee assignment:', error);
+      throw error;
+    }
+  });
+  
+  // Auto-assign payees based on description patterns
+  ipcMain.handle('transactions:autoAssignPayees', () => {
+    try {
+      const payeePatterns = [
+        { pattern: /starbucks/i, name: 'Starbucks' },
+        { pattern: /walmart/i, name: 'Walmart' },
+        { pattern: /target/i, name: 'Target' },
+        { pattern: /amazon/i, name: 'Amazon' },
+        { pattern: /mcdonalds/i, name: "McDonald's" },
+        { pattern: /costco/i, name: 'Costco' },
+        { pattern: /labonne/i, name: "LaBonne's Markets" },
+        { pattern: /dunkin/i, name: 'Dunkin' },
+        { pattern: /shell/i, name: 'Shell' },
+        { pattern: /exxon/i, name: 'Exxon' }
+      ];
+      
+      function getOrCreatePayee(name) {
+        const existing = db.prepare('SELECT payee_id FROM payees WHERE name = ?').get(name);
+        if (existing) return existing.payee_id;
+        
+        const result = db.prepare(`
+          INSERT INTO payees (name, created_at, updated_at)
+          VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `).run(name);
+        return result.lastInsertRowid;
+      }
+      
+      // Get transactions without payees
+      const transactions = db.prepare(`
+        SELECT transaction_id, description 
+        FROM transactions 
+        WHERE payee_id IS NULL 
+        AND transaction_type != 'transfer'
+        AND description IS NOT NULL
+      `).all();
+      
+      db.prepare('BEGIN').run();
+      
+      let assignedCount = 0;
+      const updateStmt = db.prepare(`
+        UPDATE transactions 
+        SET payee_id = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE transaction_id = ?
+      `);
+      
+      for (const transaction of transactions) {
+        for (const { pattern, name } of payeePatterns) {
+          if (pattern.test(transaction.description)) {
+            const payeeId = getOrCreatePayee(name);
+            updateStmt.run(payeeId, transaction.transaction_id);
+            assignedCount++;
+            break;
+          }
+        }
+      }
+      
+      db.prepare('COMMIT').run();
+      
+      return { success: true, count: assignedCount };
+    } catch (error) {
+      db.prepare('ROLLBACK').run();
+      console.error('Error in auto-assign payees:', error);
+      throw error;
+    }
+  });
+
   console.log('Transaction IPC handlers registered');
 }
 // Database-focused development script
@@ -1925,9 +2164,10 @@ function setupImportExportHandlers() {
     try {
       const { filePath, filters } = options;
       // Build a comprehensive query to get transaction data with related info
-      let query = 'SELECT t.*, a.name as account_name, a.currency, c.name as category_name FROM transactions t';
+      let query = 'SELECT t.*, a.name as account_name, a.currency, c.name as category_name, p.name as payee_name FROM transactions t';
       query += ' LEFT JOIN accounts a ON t.account_id = a.account_id';
       query += ' LEFT JOIN categories c ON t.category_id = c.category_id';
+      query += ' LEFT JOIN payees p ON t.payee_id = p.payee_id';
       
       const whereConditions = [];
       const params = [];
@@ -2091,9 +2331,10 @@ function setupImportExportHandlers() {
       const { filePath, filters } = options;
       
       // Build a comprehensive query to get transaction data with related info
-      let query = 'SELECT t.*, a.name as account_name, a.currency, c.name as category_name FROM transactions t';
+      let query = 'SELECT t.*, a.name as account_name, a.currency, c.name as category_name, p.name as payee_name FROM transactions t';
       query += ' LEFT JOIN accounts a ON t.account_id = a.account_id';
       query += ' LEFT JOIN categories c ON t.category_id = c.category_id';
+      query += ' LEFT JOIN payees p ON t.payee_id = p.payee_id';
       
       const whereConditions = [];
       const params = [];

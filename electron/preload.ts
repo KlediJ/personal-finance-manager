@@ -40,7 +40,14 @@ contextBridge.exposeInMainWorld('api', {
     bulkDelete: (ids: number[]) => ipcRenderer.invoke('transactions:bulkDelete', ids),
     getByCategory: (categoryId: number) => ipcRenderer.invoke('transactions:getByCategory', categoryId),
     getByType: (type: string) => ipcRenderer.invoke('transactions:getByType', type),
-    getByStatus: (status: string) => ipcRenderer.invoke('transactions:getByStatus', status)
+    getByStatus: (status: string) => ipcRenderer.invoke('transactions:getByStatus', status),
+    createTransfer: (fromAccountId: number, toAccountId: number, amount: number, description?: string, date?: string) => 
+      ipcRenderer.invoke('transactions:createTransfer', fromAccountId, toAccountId, amount, description, date),
+    recalculateBalances: () => ipcRenderer.invoke('transactions:recalculateBalances'),
+    bulkAssignPayee: (transactionIds: number[], payeeId: number) => 
+      ipcRenderer.invoke('transactions:bulkAssignPayee', transactionIds, payeeId),
+    autoAssignPayees: () => ipcRenderer.invoke('transactions:autoAssignPayees'),
+    backfillPayees: () => ipcRenderer.invoke('transactions:backfillPayees')
   },
   categories: {
     getAll: () => ipcRenderer.invoke('categories:getAll'),

@@ -30,7 +30,12 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         bulkDelete: (ids) => electron_1.ipcRenderer.invoke('transactions:bulkDelete', ids),
         getByCategory: (categoryId) => electron_1.ipcRenderer.invoke('transactions:getByCategory', categoryId),
         getByType: (type) => electron_1.ipcRenderer.invoke('transactions:getByType', type),
-        getByStatus: (status) => electron_1.ipcRenderer.invoke('transactions:getByStatus', status)
+        getByStatus: (status) => electron_1.ipcRenderer.invoke('transactions:getByStatus', status),
+        createTransfer: (fromAccountId, toAccountId, amount, description, date) => electron_1.ipcRenderer.invoke('transactions:createTransfer', fromAccountId, toAccountId, amount, description, date),
+        recalculateBalances: () => electron_1.ipcRenderer.invoke('transactions:recalculateBalances'),
+        bulkAssignPayee: (transactionIds, payeeId) => electron_1.ipcRenderer.invoke('transactions:bulkAssignPayee', transactionIds, payeeId),
+        autoAssignPayees: () => electron_1.ipcRenderer.invoke('transactions:autoAssignPayees'),
+        backfillPayees: () => electron_1.ipcRenderer.invoke('transactions:backfillPayees')
     },
     categories: {
         getAll: () => electron_1.ipcRenderer.invoke('categories:getAll'),

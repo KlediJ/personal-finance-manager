@@ -26,9 +26,14 @@ declare global {
         getByDateRange: (startDate: string, endDate: string) => Promise<Transaction[]>;
         getRecent: (limit: number) => Promise<Transaction[]>;
         searchByDescription: (term: string) => Promise<Transaction[]>;
-        create: (transaction: Transaction) => Promise<{ id: number, success: boolean }>;
+        create: (transaction: Transaction) => Promise<{ transactionId: number, success: boolean }>;
         update: (id: number, transaction: Transaction) => Promise<{ success: boolean }>;
         delete: (id: number) => Promise<{ success: boolean }>;
+        createTransfer: (fromAccountId: number, toAccountId: number, amount: number, description?: string, date?: string) => Promise<{ fromTransactionId: number, toTransactionId: number, success: boolean }>;
+        bulkAssignPayee: (transactionIds: number[], payeeId: number) => Promise<{ success: boolean, count: number }>;
+        autoAssignPayees: () => Promise<{ success: boolean, count: number }>;
+        backfillPayees: () => Promise<{ success: boolean, processedCount: number, payeeExtractedCount: number, newPayeeCount: number, existingPayeeCount: number, message: string }>;
+        recalculateBalances: () => Promise<{ success: boolean }>;
         bulkDelete: (ids: number[]) => Promise<{ 
           success?: boolean, 
           partialSuccess?: boolean, 

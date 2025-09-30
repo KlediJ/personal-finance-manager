@@ -1,6 +1,7 @@
 import Papa from 'papaparse';
 import { Transaction, TransactionType, TransactionStatus } from '../../data-storage/models/Transaction';
 import { Account } from '../../data-storage/models/Account';
+import { PayeeExtractor } from '../ai/PayeeExtractor';
 
 /**
  * Handles CSV file parsing, validation, and transformation for transaction imports
@@ -233,6 +234,30 @@ export class CsvProcessor {
       // Description
       if (mappings.description && row[mappings.description] !== undefined) {
         transaction.description = String(row[mappings.description] || '');
+      }
+      
+      // 6. Payee extraction from description
+      if (transaction.description) {
+        const extractedPayee = PayeeExtractor.extractPayeeFromDescription(transaction.description);
+        if (extractedPayee) {
+          transaction.payee_name = extractedPayee;
+          console.log(`Extracted payee "${extractedPayee}" from description: "${transaction.description}"`);
+        }
+      }
+      
+      // Handle explicit payee mapping if provided
+      if (mappings.payee_name && row[mappings.payee_name] !== undefined) {
+        const explicitPayee = String(row[mappings.payee_name] || '').trim();
+        if (explicitPayee) {
+          transaction.payee_name = explicitPayee;
+        }
+      }
+      
+      if (mappings.payee_id && row[mappings.payee_id] !== undefined) {
+        const payeeId = Number(row[mappings.payee_id]);
+        if (!isNaN(payeeId)) {
+          transaction.payee_id = payeeId;
+        }
       }
       
       // Category ID (placeholder for now - would need category lookup by name)

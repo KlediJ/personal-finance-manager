@@ -85,6 +85,10 @@ contextBridge.exposeInMainWorld('api', {
     getEnhanced: () => {
       console.log('Preload: Calling payees:getEnhanced');
       return ipcRenderer.invoke('payees:getEnhanced');
+    },
+    createIfNotExists: (payee: Payee) => {
+      console.log('Preload: Calling payees:createIfNotExists', payee);
+      return ipcRenderer.invoke('payees:createIfNotExists', payee);
     }
   },
   

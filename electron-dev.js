@@ -513,6 +513,127 @@ function setupTransactionHandlers() {
     }
   });
 
+  // Backfill payees from transaction descriptions
+  ipcMain.handle('transactions:backfillPayees', () => {
+    try {
+      // Get all transactions without payees
+      const transactions = db.prepare(`
+        SELECT transaction_id, description
+        FROM transactions
+        WHERE payee_id IS NULL
+        AND description IS NOT NULL
+        AND transaction_type != 'transfer'
+      `).all();
+
+      console.log(`Found ${transactions.length} transactions without payees`);
+
+      if (transactions.length === 0) {
+        return { success: true, processed: 0, linked: 0, created: 0 };
+      }
+
+      db.prepare('BEGIN').run();
+
+      let linkedCount = 0;
+      let createdCount = 0;
+
+      const updateStmt = db.prepare(`
+        UPDATE transactions
+        SET payee_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE transaction_id = ?
+      `);
+
+      for (const transaction of transactions) {
+        const desc = transaction.description.toUpperCase();
+
+        // Extract payee name from common patterns
+        let payeeName = null;
+
+        // Pattern 1: "PURCHASE AUTHORIZED ON MM/DD PAYEE_NAME CARD"
+        let match = desc.match(/PURCHASE AUTHORIZED ON \d{2}\/\d{2}\s+([A-Z0-9\s&'-]+?)(?:\s+CARD|\s+\d|$)/);
+        if (match) {
+          payeeName = match[1].trim();
+        }
+
+        // Pattern 2: "RECURRING PAYMENT AUTHORIZED ON MM/DD PAYEE_NAME"
+        if (!payeeName) {
+          match = desc.match(/RECURRING PAYMENT AUTHORIZED ON \d{2}\/\d{2}\s+([A-Z0-9\s&'-]+?)(?:\s+\d|$)/);
+          if (match) {
+            payeeName = match[1].trim();
+          }
+        }
+
+        // Pattern 3: "PAYEE_NAME WEB_PAY" or "PAYEE_NAME ONLINE PMT"
+        if (!payeeName) {
+          match = desc.match(/^([A-Z][A-Z0-9\s&'-]+?)\s+(?:WEB_PAY|ONLINE PMT|AUTOPAY)/);
+          if (match) {
+            payeeName = match[1].trim();
+          }
+        }
+
+        // Pattern 4: "PAYPAL INST XFER YYMMDD PAYEE_NAME"
+        if (!payeeName) {
+          match = desc.match(/PAYPAL INST XFER \d+\s+([A-Z0-9\s&'-]+?)(?:\s+\d|$)/);
+          if (match) {
+            payeeName = match[1].trim();
+          }
+        }
+
+        // Pattern 5: Generic - first meaningful word group
+        if (!payeeName && desc.length > 5) {
+          match = desc.match(/^([A-Z][A-Z0-9\s&'-]{2,30}?)(?:\s+\d|\s+CARD|$)/);
+          if (match) {
+            payeeName = match[1].trim();
+          }
+        }
+
+        if (payeeName && payeeName.length >= 3) {
+          // Normalize payee name
+          payeeName = payeeName
+            .split(/\s+/)
+            .map(word => word.charAt(0) + word.slice(1).toLowerCase())
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          // Check if payee exists (case-insensitive)
+          let existing = db.prepare('SELECT payee_id FROM payees WHERE LOWER(name) = LOWER(?)').get(payeeName);
+
+          let payeeId;
+          if (existing) {
+            payeeId = existing.payee_id;
+            linkedCount++;
+          } else {
+            // Create new payee
+            const result = db.prepare(`
+              INSERT INTO payees (name, created_at, updated_at)
+              VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `).run(payeeName);
+            payeeId = result.lastInsertRowid;
+            createdCount++;
+          }
+
+          // Link transaction to payee
+          updateStmt.run(payeeId, transaction.transaction_id);
+        }
+      }
+
+      db.prepare('COMMIT').run();
+
+      console.log(`Backfill complete: ${linkedCount} linked to existing, ${createdCount} new payees created`);
+
+      return {
+        success: true,
+        processed: transactions.length,
+        linked: linkedCount,
+        created: createdCount
+      };
+    } catch (error) {
+      db.prepare('ROLLBACK').run();
+      console.error('Error in backfill payees:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   console.log('Transaction IPC handlers registered');
 }
 // Database-focused development script
@@ -1071,6 +1192,51 @@ function setupPayeeHandlers() {
     return ipcMain.handle('payees:getAll');
   });
 
+  // Create payee if it doesn't exist (case-insensitive)
+  ipcMain.handle('payees:createIfNotExists', (_, payee) => {
+    try {
+      // Check if payee exists (case-insensitive)
+      const existing = db.prepare('SELECT payee_id FROM payees WHERE LOWER(name) = LOWER(?)').get(payee.name);
+
+      if (existing) {
+        return { id: existing.payee_id, created: false, success: true };
+      }
+
+      // Create new payee
+      const stmt = db.prepare(`
+        INSERT INTO payees (name, default_category_id)
+        VALUES (?, ?)
+      `);
+      const result = stmt.run(payee.name, payee.default_category_id || null);
+      const payeeId = result.lastInsertRowid;
+
+      // Create payee details if provided
+      if (payee.details) {
+        const detailsStmt = db.prepare(`
+          INSERT INTO payee_details (
+            payee_id, business_type, website, phone, address,
+            auto_categorization_rules, payment_methods, typical_amount_range
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        detailsStmt.run(
+          payeeId,
+          payee.details.business_type,
+          payee.details.website,
+          payee.details.phone,
+          payee.details.address,
+          payee.details.auto_categorization_rules,
+          payee.details.payment_methods,
+          payee.details.typical_amount_range
+        );
+      }
+
+      return { id: payeeId, created: true, success: true };
+    } catch (error) {
+      console.error('Error creating payee if not exists:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   console.log('Payee IPC handlers registered');
 }
 
@@ -1328,7 +1494,7 @@ function createWindow() {
   // Initialize AI handlers
   try {
     const { initializeAIHandlers } = require('./electron/electron/ipc/aiHandlers.js');
-    initializeAIHandlers();
+    initializeAIHandlers(db);
     console.log('✓ Enhanced AI handlers initialized');
   } catch (error) {
     console.error('Error initializing AI handlers:', error);

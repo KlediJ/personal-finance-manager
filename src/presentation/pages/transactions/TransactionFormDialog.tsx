@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -12,41 +12,32 @@ import {
   MenuItem,
   Grid,
   InputAdornment,
-  SelectChangeEvent,
   FormHelperText
 } from '@mui/material';
-import { 
-  Transaction, 
-  TransactionType, 
-  TransactionStatus 
+import {
+  Transaction,
+  TransactionStatus,
+  TransactionType
 } from '../../../data-storage/models/Transaction';
 import { Account } from '../../../data-storage/models/Account';
 import { Category } from '../../../data-storage/models/Category';
-import { Payee } from '../../../data-storage/models/Payee';
-import { PayeeExtractor } from '../../../data-processing/ai/PayeeExtractor';
 
 interface TransactionFormDialogProps {
   open: boolean;
   transaction: Transaction | null;
   onClose: () => void;
-  onSave: (transaction: Transaction) => void;
+  onSave: (transaction: Transaction) => Promise<void> | void;
 }
 
-// Default new transaction values
-const defaultTransaction: Transaction = {
-  account_id: 0,
-  date: new Date().toISOString().split('T')[0],
+const defaultTransaction = (accountId?: number): Transaction => ({
+  account_id: accountId ?? 0,
   amount: 0,
+  date: new Date().toISOString().split('T')[0],
   description: '',
   category_id: null,
   transaction_type: TransactionType.EXPENSE,
-  status: TransactionStatus.PENDING,
-  payee_id: null,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString()
-};
-
-// Categories will be loaded from the database
+  status: TransactionStatus.CLEARED
+});
 
 const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
   open,
@@ -54,380 +45,278 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
   onClose,
   onSave
 }) => {
-  const [formValues, setFormValues] = useState<Transaction>(defaultTransaction);
+  const [formValues, setFormValues] = useState<Transaction>(defaultTransaction());
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [payees, setPayees] = useState<Payee[]>([]);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Load accounts and categories for the dropdown
   useEffect(() => {
-    const loadData = async () => {
+    const loadLookups = async () => {
+      if (!open) {
+        return;
+      }
+
       try {
-        setLoading(true);
-        
-        // Load accounts
-        const accountsData = await window.api.accounts.getAll();
+        const [accountsData, categoriesData] = await Promise.all([
+          window.api.accounts.getAll(),
+          window.api.categories.getAll()
+        ]);
+
         setAccounts(accountsData);
-        
-        // If no accounts exist or this is a new transaction, set the first account as default
-        if (accountsData.length > 0 && !transaction) {
-          setFormValues(prev => ({ ...prev, account_id: accountsData[0].account_id }));
-        }
-        
-        // Load categories
-        const categoriesData = await window.api.categories.getAll();
         setCategories(categoriesData);
-        
-        // Load payees
-        const payeesData = await window.api.payees.getAll();
-        setPayees(payeesData);
-        
       } catch (error) {
-        console.error('Error loading form data:', error);
-      } finally {
-        setLoading(false);
+        console.error('Error loading accounts/categories for transaction form:', error);
       }
     };
-    
-    if (open) {
-      loadData();
-    }
+
+    loadLookups();
   }, [open]);
 
-  // Update form when editing an existing transaction
   useEffect(() => {
     if (transaction) {
       setFormValues(transaction);
-      setSelectedDate(new Date(transaction.date));
     } else {
-      setFormValues(defaultTransaction);
-      setSelectedDate(new Date());
+      setFormValues(defaultTransaction());
     }
     setErrors({});
+    setSaving(false);
   }, [transaction, open]);
 
-  // Handle form field changes
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type } = e.target;
-    
-    if (type === 'number') {
-      let numberValue = parseFloat(value) || 0;
-      
-      // For expense transactions, store amount as negative number
-      if (name === 'amount' && formValues.transaction_type === TransactionType.EXPENSE) {
-        numberValue = Math.abs(numberValue) * -1;
-      } else if (name === 'amount' && formValues.transaction_type === TransactionType.INCOME) {
-        numberValue = Math.abs(numberValue);
-      }
-      
-      setFormValues({ ...formValues, [name]: numberValue });
-    } else {
-      const updatedValues = { ...formValues, [name]: value };
-      
-      // Auto-extract payee from description if description field changed
-      if (name === 'description' && value.trim()) {
-        const extractedPayee = PayeeExtractor.extractPayeeFromDescription(value);
-        if (extractedPayee) {
-          // Find existing payee or prepare to create new one
-          const existingPayee = payees.find(p => p.name.toLowerCase() === extractedPayee.toLowerCase());
-          if (existingPayee) {
-            updatedValues.payee_id = existingPayee.payee_id;
-            updatedValues.payee_name = existingPayee.name;
-          } else {
-            // Store payee name for creation during save
-            updatedValues.payee_name = extractedPayee;
-            updatedValues.payee_id = null;
-          }
-          console.log(`Auto-extracted payee "${extractedPayee}" from description`);
-        }
-      }
-      
-      setFormValues(updatedValues);
-    }
-  };
-
-  // Handle select changes
-  const handleSelectChange = (e: SelectChangeEvent) => {
-    const { name, value } = e.target;
-    
-    // If changing transaction type, adjust the amount sign
-    if (name === 'transaction_type') {
-      let adjustedAmount = formValues.amount;
-      
-      // Convert string value to enum
-      const transactionType = value as unknown as TransactionType;
-      
-      if (transactionType === TransactionType.EXPENSE) {
-        adjustedAmount = Math.abs(adjustedAmount) * -1;
-      } else if (transactionType === TransactionType.INCOME) {
-        adjustedAmount = Math.abs(adjustedAmount);
-      }
-      
-      setFormValues({ 
-        ...formValues, 
-        // Directly assign without computed property syntax
-        transaction_type: transactionType,
-        amount: adjustedAmount
-      });
-    } else if (name === 'category_id') {
-      setFormValues({
-        ...formValues,
-        [name]: value === 'null' ? null : parseInt(value)
-      });
-    } else if (name === 'account_id') {
-      setFormValues({
-        ...formValues,
-        [name]: parseInt(value)
-      });
-    } else if (name === 'payee_id') {
-      setFormValues({
-        ...formValues,
-        [name]: value === 'null' ? null : parseInt(value)
-      });
-    } else {
-      setFormValues({ ...formValues, [name]: value });
-    }
-  };
-
-  // Handle date change
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const dateValue = e.target.value;
-    if (dateValue) {
-      const date = new Date(dateValue);
-      setSelectedDate(date);
-      setFormValues({ ...formValues, date: dateValue });
-    }
-  };
-
-  // Validate form before submission
-  const validateForm = (): boolean => {
+  const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!formValues.account_id) {
       newErrors.account_id = 'Account is required';
     }
-    
+
     if (!formValues.date) {
       newErrors.date = 'Date is required';
     }
-    
-    if (formValues.amount === 0) {
-      newErrors.amount = 'Amount cannot be zero';
+
+    if (formValues.amount === undefined || formValues.amount === null || isNaN(formValues.amount)) {
+      newErrors.amount = 'Amount is required';
+    } else if (formValues.amount === 0) {
+      newErrors.amount = 'Amount must not be zero';
     }
-    
+
+    if (!formValues.transaction_type) {
+      newErrors.transaction_type = 'Transaction type is required';
+    }
+
+    if (!formValues.status) {
+      newErrors.status = 'Status is required';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle form submission
-  const handleSubmit = async () => {
-    if (validateForm()) {
-      // Ensure we have created_at and updated_at values
-      const now = new Date().toISOString();
-      const transactionToSave: Transaction = {
-        ...formValues,
-        updated_at: now
-      };
-      
-      // Add created_at for new transactions
-      if (!transaction) {
-        transactionToSave.created_at = now;
-      }
-      
-      // If user selected a payee, make sure we have the payee_name for display
-      if (transactionToSave.payee_id && !transactionToSave.payee_name) {
-        const selectedPayee = payees.find(p => p.payee_id === transactionToSave.payee_id);
-        if (selectedPayee) {
-          transactionToSave.payee_name = selectedPayee.name;
-        }
-      }
-      
-      onSave(transactionToSave);
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!validate()) {
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave(formValues);
+    } finally {
+      setSaving(false);
     }
   };
 
-  // Format the amount for display
-  const getDisplayAmount = () => {
-    // Always display a positive number in the form
-    return Math.abs(formValues.amount || 0);
+  const handleFieldChange = (field: keyof Transaction, value: any) => {
+    setFormValues(prev => ({
+      ...prev,
+      [field]: value
+    }));
+
+    if (errors[field as string]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[field as string];
+        return next;
+      });
+    }
+  };
+
+  const handleAmountChange = (value: string) => {
+    const parsed = parseFloat(value);
+    handleFieldChange('amount', isNaN(parsed) ? 0 : parsed);
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        {transaction ? 'Edit Transaction' : 'Add New Transaction'}
-      </DialogTitle>
-      <DialogContent>
-        <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
-            <FormControl fullWidth error={!!errors.account_id}>
-              <InputLabel>Account</InputLabel>
-              <Select
-                name="account_id"
-                value={`${formValues.account_id || ''}`}
-                onChange={handleSelectChange}
-                label="Account"
-                disabled={loading}
-              >
-                {accounts.length === 0 ? (
-                  <MenuItem value="" disabled>
-                    No accounts found
+      <form onSubmit={handleSubmit}>
+        <DialogTitle>
+          {transaction ? 'Edit Transaction' : 'Add Transaction'}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <FormControl fullWidth error={!!errors.account_id}>
+                <InputLabel>Account</InputLabel>
+                <Select
+                  value={formValues.account_id ? formValues.account_id.toString() : ''}
+                  label="Account"
+                  onChange={event =>
+                    handleFieldChange('account_id', Number(event.target.value) || 0)
+                  }
+                >
+                  <MenuItem value="">
+                    <em>Select Account</em>
                   </MenuItem>
-                ) : (
-                  accounts.map(account => (
+                  {accounts.map(account => (
                     <MenuItem key={account.account_id} value={account.account_id}>
                       {account.name}
                     </MenuItem>
-                  ))
+                  ))}
+                </Select>
+                {errors.account_id && (
+                  <FormHelperText>{errors.account_id}</FormHelperText>
                 )}
-              </Select>
-              {errors.account_id && <FormHelperText>{errors.account_id}</FormHelperText>}
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <TextField
-              label="Transaction Date"
-              type="date"
-              fullWidth
-              value={selectedDate ? selectedDate.toISOString().split('T')[0] : ''}
-              onChange={handleDateChange}
-              error={!!errors.date}
-              helperText={errors.date}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel>Transaction Type</InputLabel>
-              <Select
-                name="transaction_type"
-                value={formValues.transaction_type}
-                onChange={handleSelectChange}
-                label="Transaction Type"
-              >
-                <MenuItem value={TransactionType.EXPENSE}>Expense</MenuItem>
-                <MenuItem value={TransactionType.INCOME}>Income</MenuItem>
-                {/* Transfer removed - use dedicated Transfer Dialog */}
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12}>
-            <TextField
-              name="description"
-              label="Description"
-              fullWidth
-              value={formValues.description || ''}
-              onChange={handleChange}
-              placeholder="Enter transaction description"
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <TextField
-              name="amount"
-              label="Amount"
-              type="number"
-              fullWidth
-              value={getDisplayAmount().toString()}
-              onChange={handleChange}
-              error={!!errors.amount}
-              helperText={errors.amount}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">$</InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel>Category</InputLabel>
-              <Select
-                name="category_id"
-                value={formValues.category_id === null || formValues.category_id === undefined 
-                  ? 'null' 
-                  : `${formValues.category_id}`}
-                onChange={handleSelectChange}
-                label="Category"
-              >
-                <MenuItem value="null">
-                  <em>No Category</em>
-                </MenuItem>
-                {categories.map(category => (
-                  <MenuItem key={category.category_id} value={category.category_id?.toString()}>
-                    {category.name}
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Date"
+                type="date"
+                value={formValues.date || ''}
+                onChange={event => handleFieldChange('date', event.target.value)}
+                InputLabelProps={{ shrink: true }}
+                error={!!errors.date}
+                helperText={errors.date}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Description"
+                value={formValues.description || ''}
+                onChange={event =>
+                  handleFieldChange('description', event.target.value)
+                }
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Category</InputLabel>
+                <Select
+                  value={
+                    formValues.category_id !== undefined &&
+                    formValues.category_id !== null
+                      ? formValues.category_id.toString()
+                      : ''
+                  }
+                  label="Category"
+                  onChange={event =>
+                    handleFieldChange(
+                      'category_id',
+                      event.target.value ? Number(event.target.value) : null
+                    )
+                  }
+                >
+                  <MenuItem value="">
+                    <em>Uncategorized</em>
                   </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel>Payee</InputLabel>
-              <Select
-                name="payee_id"
-                value={formValues.payee_id === null || formValues.payee_id === undefined 
-                  ? 'null' 
-                  : `${formValues.payee_id}`}
-                onChange={handleSelectChange}
-                label="Payee"
-                disabled={loading}
-              >
-                <MenuItem value="null">
-                  <em>No Payee</em>
-                </MenuItem>
-                {payees.length === 0 && !loading ? (
-                  <MenuItem value="" disabled>
-                    No payees found
-                  </MenuItem>
-                ) : (
-                  payees.map(payee => (
-                    <MenuItem key={payee.payee_id} value={payee.payee_id?.toString()}>
-                      {payee.name}
+                  {categories.map(category => (
+                    <MenuItem key={category.category_id} value={category.category_id}>
+                      {category.name}
                     </MenuItem>
-                  ))
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Amount"
+                type="number"
+                value={formValues.amount || ''}
+                onChange={event => handleAmountChange(event.target.value)}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">$</InputAdornment>
+                }}
+                error={!!errors.amount}
+                helperText={errors.amount}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth error={!!errors.transaction_type}>
+                <InputLabel>Type</InputLabel>
+                <Select
+                  value={formValues.transaction_type || ''}
+                  label="Type"
+                  onChange={event =>
+                    handleFieldChange(
+                      'transaction_type',
+                      event.target.value as TransactionType
+                    )
+                  }
+                >
+                  {Object.values(TransactionType).map(type => (
+                    <MenuItem key={type} value={type}>
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </MenuItem>
+                  ))}
+                </Select>
+                {errors.transaction_type && (
+                  <FormHelperText>{errors.transaction_type}</FormHelperText>
                 )}
-              </Select>
-            </FormControl>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12}>
+              <FormControl fullWidth error={!!errors.status}>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={formValues.status || ''}
+                  label="Status"
+                  onChange={event =>
+                    handleFieldChange(
+                      'status',
+                      event.target.value as TransactionStatus
+                    )
+                  }
+                >
+                  {Object.values(TransactionStatus).map(status => (
+                    <MenuItem key={status} value={status}>
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </MenuItem>
+                  ))}
+                </Select>
+                {errors.status && (
+                  <FormHelperText>{errors.status}</FormHelperText>
+                )}
+              </FormControl>
+            </Grid>
           </Grid>
-          
-          <Grid item xs={12}>
-            <FormControl fullWidth>
-              <InputLabel>Status</InputLabel>
-              <Select
-                name="status"
-                value={formValues.status}
-                onChange={handleSelectChange}
-                label="Status"
-              >
-                <MenuItem value={TransactionStatus.PENDING}>Pending</MenuItem>
-                <MenuItem value={TransactionStatus.CLEARED}>Cleared</MenuItem>
-                <MenuItem value={TransactionStatus.RECONCILED}>Reconciled</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button 
-          onClick={handleSubmit} 
-          variant="contained" 
-          color="primary"
-        >
-          Save
-        </Button>
-      </DialogActions>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={saving}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </form>
     </Dialog>
   );
 };
 
 export default TransactionFormDialog;
+

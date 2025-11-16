@@ -72,6 +72,10 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         getEnhanced: () => {
             console.log('Preload: Calling payees:getEnhanced');
             return electron_1.ipcRenderer.invoke('payees:getEnhanced');
+        },
+        createIfNotExists: (payee) => {
+            console.log('Preload: Calling payees:createIfNotExists', payee);
+            return electron_1.ipcRenderer.invoke('payees:createIfNotExists', payee);
         }
     },
     database: {

@@ -135,11 +135,11 @@ const AIPage: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-            <Typography variant="h6">AI Dual-Model Status:</Typography>
+            <Typography variant="h6">AI Categorization System:</Typography>
             {aiStatus === 'loading' && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <CircularProgress size={20} />
-                <Chip label="Loading AI Models..." color="warning" variant="outlined" />
+                <Chip label="Initializing..." color="warning" variant="outlined" />
               </Box>
             )}
             {aiStatus === 'ready' && (
@@ -149,94 +149,65 @@ const AIPage: React.FC = () => {
               <Chip label="Error" color="error" variant="outlined" />
             )}
           </Box>
-          
+
           {aiStatus === 'ready' && (
             <Box>
               <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={6}>
                   <Card variant="outlined">
                     <CardContent>
                       <Typography variant="subtitle2" gutterBottom>
-                        Mistral 7B
+                        Rule-Based Categorization (Phase 1)
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Chip 
-                          label={modelStatus?.mistral ? 'Loaded' : 'Not Loaded'} 
-                          color={modelStatus?.mistral ? 'success' : 'default'}
+                        <Chip
+                          label="Active"
+                          color="success"
                           size="small"
                         />
                       </Box>
                       <Typography variant="caption" color="text.secondary">
-                        Transaction categorization & payee extraction
+                        Pattern matching with 65+ merchant patterns
                       </Typography>
                     </CardContent>
                   </Card>
                 </Grid>
-                <Grid item xs={12} md={4}>
+                <Grid item xs={12} md={6}>
                   <Card variant="outlined">
                     <CardContent>
                       <Typography variant="subtitle2" gutterBottom>
-                        CodeLlama 7B
+                        Target Accuracy
                       </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Chip 
-                          label={modelStatus?.codellama ? 'Loaded' : 'Not Loaded'} 
-                          color={modelStatus?.codellama ? 'success' : 'default'}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                        <Chip
+                          label="75-80%"
+                          color="info"
                           size="small"
                         />
                       </Box>
                       <Typography variant="caption" color="text.secondary">
-                        Complex financial analysis & queries
+                        Pattern matching accuracy
                       </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Memory Usage
-                      </Typography>
-                      {memoryUsage && (
-                        <Box>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={memoryUsage.percentage} 
-                            sx={{ mb: 1 }}
-                          />
-                          <Typography variant="caption" color="text.secondary">
-                            {memoryUsage.percentage.toFixed(1)}% ({(memoryUsage.current / (1024*1024*1024)).toFixed(1)}GB / {(memoryUsage.max / (1024*1024*1024)).toFixed(1)}GB)
-                          </Typography>
-                        </Box>
-                      )}
                     </CardContent>
                   </Card>
                 </Grid>
               </Grid>
-              
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Button 
-                  variant="outlined" 
-                  onClick={handlePreloadModels}
-                  disabled={isPreloading}
-                  startIcon={isPreloading ? <CircularProgress size={16} /> : <AutoFixHighIcon />}
-                >
-                  {isPreloading ? 'Loading Models...' : 'Preload Models'}
-                </Button>
-              </Box>
-              
+
               <Box sx={{ mt: 2 }}>
                 <Typography variant="body2" color="text.secondary">
-                  • Dual-model AI architecture with Mistral 7B + CodeLlama 7B
+                  • Rule-based pattern matching with 65+ merchant patterns
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   • All processing happens locally - your data never leaves your device
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  • Advanced payee extraction and financial intelligence
+                  • Instant categorization with confidence scoring
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  • Smart automation with loan optimization and bill forecasting
+                  • Smart payee extraction from transaction descriptions
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  • Phase 2+ features coming soon: Machine learning and API enhancement
                 </Typography>
               </Box>
             </Box>
@@ -423,132 +394,184 @@ const FinancialAnalysisPanel: React.FC<{ aiStatus: string }> = ({ aiStatus }) =>
   );
 };
 
-// AI Management Panel Component
-const AIManagementPanel: React.FC<{ 
-  aiStatus: string; 
-  modelStatus: any; 
-  memoryUsage: any; 
-}> = ({ aiStatus, modelStatus, memoryUsage }) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('');
+// AI Management Panel Component - Phase 1
+const AIManagementPanel: React.FC<{
+  aiStatus: string;
+  modelStatus: any;
+  memoryUsage: any;
+}> = ({ aiStatus }) => {
+  const [stats, setStats] = useState<any>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
 
-  const handleModelAction = async (action: string, modelName?: string) => {
-    setIsLoading(true);
-    setStatusMessage('');
-    
+  useEffect(() => {
+    loadStatistics();
+  }, []);
+
+  const loadStatistics = async () => {
+    setIsLoadingStats(true);
     try {
-      let result;
-      if (window.api && window.api.ai) {
-        switch (action) {
-          case 'preload':
-            result = await window.api.ai.preloadModels();
-            break;
-          case 'load':
-            result = await window.api.ai.loadModel(modelName!);
-            break;
-          case 'unload':
-            result = await window.api.ai.unloadModel(modelName!);
-            break;
-          case 'clear':
-            result = await window.api.ai.clearModels();
-            break;
-          default:
-            result = { success: false, error: 'Unknown action' };
+      if (window.api && window.api.ai && window.api.ai.getStatistics) {
+        const result = await window.api.ai.getStatistics();
+        if (result.success) {
+          setStats(result.stats);
         }
-      } else {
-        result = { success: true, message: `Mock ${action} completed` };
       }
-      
-      setStatusMessage(result.success ? (result.message || 'Success') : (result.error || 'Error'));
     } catch (error) {
-      console.error('Model action error:', error);
-      setStatusMessage('Action failed');
+      console.error('Error loading AI statistics:', error);
     } finally {
-      setIsLoading(false);
+      setIsLoadingStats(false);
     }
   };
 
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
-        AI Model Management
+        AI System Management
       </Typography>
-      
+
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} md={6}>
           <Card variant="outlined">
             <CardContent>
-              <Typography variant="subtitle2" gutterBottom>
-                Model Operations
+              <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <MonitorHeartIcon color="primary" />
+                System Status
               </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Button 
-                  variant="contained" 
-                  onClick={() => handleModelAction('preload')}
-                  disabled={isLoading}
-                  startIcon={isLoading ? <CircularProgress size={16} /> : <AutoFixHighIcon />}
-                >
-                  Preload All Models
-                </Button>
-                <Button 
-                  variant="outlined" 
-                  onClick={() => handleModelAction('load', 'mistral-7b')}
-                  disabled={isLoading}
-                >
-                  Load Mistral 7B
-                </Button>
-                <Button 
-                  variant="outlined" 
-                  onClick={() => handleModelAction('load', 'codellama-7b')}
-                  disabled={isLoading}
-                >
-                  Load CodeLlama 7B
-                </Button>
-                <Button 
-                  variant="outlined" 
-                  color="warning"
-                  onClick={() => handleModelAction('clear')}
-                  disabled={isLoading}
-                >
-                  Clear All Models
-                </Button>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Categorization Engine:
+                  </Typography>
+                  <Chip label="Rule-Based (Phase 1)" color="success" size="small" />
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    System Status:
+                  </Typography>
+                  <Chip label={aiStatus} color={aiStatus === 'ready' ? 'success' : 'default'} size="small" />
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Heavy Models:
+                  </Typography>
+                  <Chip label="Not Required" color="info" size="small" />
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Processing:
+                  </Typography>
+                  <Chip label="100% Local" color="success" size="small" />
+                </Box>
               </Box>
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} md={6}>
           <Card variant="outlined">
             <CardContent>
-              <Typography variant="subtitle2" gutterBottom>
-                System Status
+              <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TrendingUpIcon color="primary" />
+                Categorization Statistics
               </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <Typography variant="body2">
-                    AI Status:
-                  </Typography>
-                  <Chip label={aiStatus} color={aiStatus === 'ready' ? 'success' : 'default'} size="small" />
+              {isLoadingStats ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+                  <CircularProgress size={24} />
                 </Box>
-                <Typography variant="body2">
-                  Models Loaded: {modelStatus ? Object.values(modelStatus).filter(Boolean).length : 0}
+              ) : stats ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Transactions:
+                    </Typography>
+                    <Typography variant="body2" fontWeight="bold">
+                      {stats.total}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Categorized:
+                    </Typography>
+                    <Typography variant="body2" fontWeight="bold" color="success.main">
+                      {stats.categorized}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Uncategorized:
+                    </Typography>
+                    <Typography variant="body2" fontWeight="bold" color="warning.main">
+                      {stats.uncategorized}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Completion Rate:
+                    </Typography>
+                    <Typography variant="body2" fontWeight="bold">
+                      {stats.completionRate.toFixed(1)}%
+                    </Typography>
+                  </Box>
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  Statistics unavailable
                 </Typography>
-                {memoryUsage && (
-                  <Typography variant="body2">
-                    Memory: {memoryUsage.percentage.toFixed(1)}% used
-                  </Typography>
-                )}
-              </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {statusMessage && (
-        <Alert severity={statusMessage.includes('failed') || statusMessage.includes('error') ? 'error' : 'success'}>
-          {statusMessage}
-        </Alert>
-      )}
+      <Card variant="outlined" sx={{ mb: 2 }}>
+        <CardContent>
+          <Typography variant="subtitle2" gutterBottom>
+            Phase 1: Active Features
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
+            <Typography variant="body2">
+              Rule-based categorization with 65+ merchant patterns
+            </Typography>
+            <Typography variant="body2">
+              Smart payee extraction and matching
+            </Typography>
+            <Typography variant="body2">
+              Confidence scoring for predictions
+            </Typography>
+            <Typography variant="body2">
+              Batch transaction processing
+            </Typography>
+            <Typography variant="body2">
+              Target accuracy: 75-80%
+            </Typography>
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="subtitle2" gutterBottom>
+            Future Enhancements (Phase 2+)
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Machine learning models for improved accuracy
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Natural language query processing
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Advanced financial analysis and forecasting
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Adaptive learning from user corrections
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              API-based enhancement options
+            </Typography>
+          </Box>
+        </CardContent>
+      </Card>
     </Box>
   );
 };

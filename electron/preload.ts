@@ -23,7 +23,11 @@ contextBridge.exposeInMainWorld('api', {
     create: (account: Account) => ipcRenderer.invoke('accounts:create', account),
     update: (id: number, account: Account) => ipcRenderer.invoke('accounts:update', id, account),
     delete: (id: number) => ipcRenderer.invoke('accounts:delete', id),
-    getTotalBalance: () => ipcRenderer.invoke('accounts:getTotalBalance')
+    getTotalBalance: () => ipcRenderer.invoke('accounts:getTotalBalance'),
+    getDetails: (accountId: number) =>
+      ipcRenderer.invoke('accounts:getDetails', accountId),
+    saveDetails: (details: any) =>
+      ipcRenderer.invoke('accounts:saveDetails', details)
   },
   transactions: {
     getAll: () => ipcRenderer.invoke('transactions:getAll'),
@@ -41,6 +45,10 @@ contextBridge.exposeInMainWorld('api', {
     getByCategory: (categoryId: number) => ipcRenderer.invoke('transactions:getByCategory', categoryId),
     getByType: (type: string) => ipcRenderer.invoke('transactions:getByType', type),
     getByStatus: (status: string) => ipcRenderer.invoke('transactions:getByStatus', status),
+    getMonthlyActivity: (month: string, accountId?: number) => 
+      ipcRenderer.invoke('transactions:getMonthlyActivity', month, accountId),
+    autoCategorizeMonth: (month: string, accountId?: number) =>
+      ipcRenderer.invoke('transactions:autoCategorizeMonth', month, accountId),
     createTransfer: (fromAccountId: number, toAccountId: number, amount: number, description?: string, date?: string) => 
       ipcRenderer.invoke('transactions:createTransfer', fromAccountId, toAccountId, amount, description, date),
     recalculateBalances: () => ipcRenderer.invoke('transactions:recalculateBalances'),
@@ -60,7 +68,13 @@ contextBridge.exposeInMainWorld('api', {
     update: (id: number, category: Category) => ipcRenderer.invoke('categories:update', id, category),
     delete: (id: number) => ipcRenderer.invoke('categories:delete', id)
   },
-  
+
+  debug: {
+    getCategories: () => ipcRenderer.invoke('debug:getCategories'),
+    migrateCategories: () => ipcRenderer.invoke('debug:migrateCategories'),
+    seedFeedbackFromWF: () => ipcRenderer.invoke('debug:seedFeedbackFromWF')
+  },
+
   payees: {
     getAll: () => {
       console.log('Preload: Calling payees:getAll');
@@ -81,6 +95,10 @@ contextBridge.exposeInMainWorld('api', {
     delete: (id: number) => {
       console.log('Preload: Calling payees:delete', id);
       return ipcRenderer.invoke('payees:delete', id);
+    },
+    bulkDelete: (ids: number[]) => {
+      console.log('Preload: Calling payees:bulkDelete', ids);
+      return ipcRenderer.invoke('payees:bulkDelete', ids);
     },
     getEnhanced: () => {
       console.log('Preload: Calling payees:getEnhanced');

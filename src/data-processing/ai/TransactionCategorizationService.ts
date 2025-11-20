@@ -291,12 +291,12 @@ export class TransactionCategorizationService {
   /**
    * Category confidence scoring thresholds
    */
-  private readonly CONFIDENCE_EXACT_MATCH = 100;
-  private readonly CONFIDENCE_STRONG_PATTERN = 90;
-  private readonly CONFIDENCE_GOOD_PATTERN = 80;
-  private readonly CONFIDENCE_FUZZY_MATCH = 70;
-  private readonly CONFIDENCE_WEAK_MATCH = 60;
-  private readonly CONFIDENCE_LOW = 50;
+  private readonly CONFIDENCE_EXACT_MATCH = 1.0;
+  private readonly CONFIDENCE_STRONG_PATTERN = 0.9;
+  private readonly CONFIDENCE_GOOD_PATTERN = 0.8;
+  private readonly CONFIDENCE_FUZZY_MATCH = 0.7;
+  private readonly CONFIDENCE_WEAK_MATCH = 0.6;
+  private readonly CONFIDENCE_LOW = 0.5;
 
   constructor() {
     console.log('TransactionCategorizationService initialized (Rule-Based, Phase 1)');
@@ -322,7 +322,8 @@ export class TransactionCategorizationService {
       description,
       transaction.amount,
       availableCategories,
-      payeeExtraction
+      payeeExtraction,
+      transaction.transaction_type
     );
 
     // Extract additional metadata
@@ -462,7 +463,7 @@ export class TransactionCategorizationService {
     if (totalWords === 0) return 0;
 
     const matchRatio = matchedWords / totalWords;
-    return Math.round(matchRatio * 100);
+    return matchRatio;
   }
 
   /**
@@ -475,16 +476,17 @@ export class TransactionCategorizationService {
       const match = description.match(pattern);
       if (match && match[1]) {
         const merchantName = this.cleanMerchantName(match[1]);
+        const canonicalName = this.canonicalizeMerchantName(merchantName);
 
-        if (merchantName.length > 2) {
+        if (canonicalName.length > 2) {
           const suggestedCategoryId = this.suggestCategoryIdForMerchant(
-            merchantName,
+            canonicalName,
             description
           );
 
           return {
             payee: {
-              name: merchantName,
+              name: canonicalName,
               default_category_id: suggestedCategoryId
             },
             confidence: this.CONFIDENCE_STRONG_PATTERN
@@ -513,6 +515,68 @@ export class TransactionCategorizationService {
   }
 
   /**
+   * Canonicalize merchant names for common chains (e.g. WF descriptions)
+   * to avoid creating many near-duplicate payees like
+   * "SHOPRITE SUTHBRY38 SOUTHBURY CT", "Shoprite 123", etc.
+   */
+  private canonicalizeMerchantName(name: string): string {
+    const lower = name.toLowerCase();
+
+    // Kleversolutions (various PayPal / Apple.com bill references)
+    if (lower.includes('kleversolution')) {
+      return 'Kleversolutions';
+    }
+
+    // Apple.com/Bill variants
+    if (lower.includes('apple.com') || lower.includes('applecombill') || lower.includes('applecom bill')) {
+      return 'Apple.com/Bill';
+    }
+
+    // Amazon (including Amazon Corp / payments)
+    if (lower.includes('amazon')) {
+      return 'Amazon';
+    }
+
+    // Shoprite (various store/location variants)
+    if (lower.includes('shoprite')) {
+      return 'Shoprite';
+    }
+
+    // Stop & Shop (store numbers / locations)
+    if (lower.includes('stop') && lower.includes('shop')) {
+      return 'Stop & Shop';
+    }
+
+    // Target.com / Target stores
+    if (lower.includes('target')) {
+      return 'Target';
+    }
+
+    // Disney Plus / Disney+ subscriptions
+    if (lower.includes('disney') && lower.includes('plus')) {
+      return 'Disney Plus';
+    }
+
+    // Eversource utility payments
+    if (lower.includes('eversource')) {
+      return 'Eversource';
+    }
+
+    // Starbucks
+    if (lower.includes('starbucks')) {
+      return 'Starbucks';
+    }
+
+    // McDonald’s
+    if (lower.includes('mcdonald')) {
+      return `McDonald's`;
+    }
+
+    // Fallback: use cleaned name as-is
+    return name;
+  }
+
+  /**
    * Suggest category ID based on merchant name patterns
    */
   private suggestCategoryIdForMerchant(
@@ -522,29 +586,11 @@ export class TransactionCategorizationService {
     const lowerMerchant = merchantName.toLowerCase();
     const lowerDescription = description.toLowerCase();
 
-    // Check against all merchant patterns
-    for (const [categoryType, patterns] of this.merchantPatterns) {
-      for (const pattern of patterns) {
-        if (pattern.test(lowerMerchant) || pattern.test(lowerDescription)) {
-          // Map category type to likely category ID
-          // These are common defaults - will be refined based on actual categories
-          const categoryMap: { [key: string]: number } = {
-            'groceries': 1,
-            'gas_fuel': 2,
-            'restaurants': 3,
-            'utilities': 4,
-            'shopping': 5,
-            'entertainment': 6,
-            'healthcare': 7,
-            'transportation': 8,
-            'financial': 9
-          };
-
-          return categoryMap[categoryType] || null;
-        }
-      }
-    }
-
+    // Previously this method attempted to map merchant patterns directly to
+    // hard-coded category IDs. With a configurable category taxonomy and
+    // user-managed categories, fixed IDs are no longer safe or accurate.
+    // Default categories for new payees should instead be established via
+    // historical data and explicit user choices, so we do not guess an ID here.
     return null;
   }
 
@@ -555,13 +601,22 @@ export class TransactionCategorizationService {
     description: string,
     amount: number,
     availableCategories: Category[],
-    payeeExtraction: PayeeExtraction | null
+    payeeExtraction: PayeeExtraction | null,
+    transactionType?: string
   ): CategoryPrediction[] {
     const predictions: CategoryPrediction[] = [];
 
+    // Narrow category pool based on transaction type when available
+    let candidateCategories = availableCategories;
+    if (transactionType === 'income') {
+      candidateCategories = availableCategories.filter(c => c.type === 'income');
+    } else if (transactionType === 'expense') {
+      candidateCategories = availableCategories.filter(c => c.type === 'expense');
+    }
+
     // Use payee's default category if available
     if (payeeExtraction?.payee.default_category_id) {
-      const defaultCategory = availableCategories.find(
+      const defaultCategory = candidateCategories.find(
         c => c.category_id === payeeExtraction.payee.default_category_id
       );
 
@@ -576,14 +631,15 @@ export class TransactionCategorizationService {
     // Pattern-based categorization
     const patternPredictions = this.getPatternBasedPredictions(
       description,
-      availableCategories
+      candidateCategories,
+      transactionType
     );
     predictions.push(...patternPredictions);
 
     // Amount-based heuristics
     const amountPredictions = this.getAmountBasedPredictions(
       amount,
-      availableCategories
+      candidateCategories
     );
     predictions.push(...amountPredictions);
 
@@ -609,7 +665,8 @@ export class TransactionCategorizationService {
    */
   private getPatternBasedPredictions(
     description: string,
-    availableCategories: Category[]
+    availableCategories: Category[],
+    transactionType?: string
   ): CategoryPrediction[] {
     const predictions: CategoryPrediction[] = [];
     const lowerDescription = description.toLowerCase();
@@ -620,7 +677,8 @@ export class TransactionCategorizationService {
           // Find matching category
           const matchingCategory = this.findCategoryByType(
             categoryType,
-            availableCategories
+            availableCategories,
+            transactionType
           );
 
           if (matchingCategory) {
@@ -686,24 +744,56 @@ export class TransactionCategorizationService {
    */
   private findCategoryByType(
     categoryType: string,
-    availableCategories: Category[]
+    availableCategories: Category[],
+    transactionType?: string
   ): Category | undefined {
+    const canonicalFamilyMap: { [key: string]: string } = {
+      'groceries': 'Groceries',
+      'gas_fuel': 'Transportation',
+      'restaurants': 'Food & Dining',
+      'utilities': 'Bills & Utilities',
+      'shopping': 'Shopping',
+      'entertainment': 'Entertainment',
+      'healthcare': 'Health & Fitness',
+      'transportation': 'Transportation',
+      'financial': 'Fees & Charges'
+    };
+
     const typeKeywords: { [key: string]: string[] } = {
       'groceries': ['groceries', 'grocery', 'food', 'supermarket'],
       'gas_fuel': ['gas', 'fuel', 'auto', 'automotive', 'transportation'],
       'restaurants': ['restaurant', 'dining', 'food', 'eating'],
-      'utilities': ['utilities', 'utility', 'bills', 'services'],
+      'utilities': ['bills & utilities', 'utilities', 'utility', 'bills', 'services'],
       'shopping': ['shopping', 'retail', 'general', 'merchandise'],
       'entertainment': ['entertainment', 'recreation', 'leisure', 'fun'],
-      'healthcare': ['healthcare', 'health', 'medical', 'pharmacy'],
+      'healthcare': ['health & fitness', 'healthcare', 'health', 'medical', 'pharmacy'],
       'transportation': ['transportation', 'transit', 'travel', 'commute'],
-      'financial': ['financial', 'bank', 'fees', 'charges']
+      'financial': ['fees & charges', 'financial', 'bank', 'fees', 'charges']
     };
+
+    // Prefer categories whose type matches the transaction type when known
+    const categoryPool =
+      transactionType === 'income'
+        ? availableCategories.filter(c => c.type === 'income')
+        : transactionType === 'expense'
+          ? availableCategories.filter(c => c.type === 'expense')
+          : availableCategories;
+
+    // First, try to resolve by canonical family name (e.g. "Shopping")
+    const canonicalName = canonicalFamilyMap[categoryType];
+    if (canonicalName) {
+      const canonical = categoryPool.find(c =>
+        c.name.toLowerCase() === canonicalName.toLowerCase()
+      );
+      if (canonical) {
+        return canonical;
+      }
+    }
 
     const keywords = typeKeywords[categoryType] || [categoryType];
 
     for (const keyword of keywords) {
-      const category = availableCategories.find(c =>
+      const category = categoryPool.find(c =>
         c.name.toLowerCase().includes(keyword)
       );
 
@@ -789,11 +879,16 @@ export class TransactionCategorizationService {
     // Information extraction confidence
     const infoCount = Object.keys(extractedInfo).length;
     if (infoCount > 0) {
-      totalConfidence += Math.min(80, infoCount * 15);
+      totalConfidence += Math.min(0.8, infoCount * 0.15);
       components++;
     }
 
-    return components > 0 ? Math.round(totalConfidence / components) : 0;
+    if (components === 0) {
+      return 0;
+    }
+
+    const average = totalConfidence / components;
+    return Math.max(0, Math.min(1, average));
   }
 
   /**

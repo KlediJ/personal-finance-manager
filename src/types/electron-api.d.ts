@@ -9,7 +9,7 @@ import { InterestExpense, InterestExpenseSummary, InterestExpenseType, CreditCar
 
 declare global {
   interface Window {
-    api: {
+      api: {
       accounts: {
         getAll: () => Promise<Account[]>;
         getActive: () => Promise<Account[]>;
@@ -18,6 +18,8 @@ declare global {
         update: (id: number, account: Account) => Promise<{ success: boolean }>;
         delete: (id: number) => Promise<{ success: boolean }>;
         getTotalBalance: () => Promise<number>;
+        getDetails: (accountId: number) => Promise<any | null>;
+        saveDetails: (details: any) => Promise<{ success: boolean; error?: string }>;
       };
       transactions: {
         getAll: () => Promise<Transaction[]>;
@@ -45,6 +47,20 @@ declare global {
         getByCategory: (categoryId: number) => Promise<Transaction[]>;
         getByType: (type: string) => Promise<Transaction[]>;
         getByStatus: (status: string) => Promise<Transaction[]>;
+        getMonthlyActivity: (month: string, accountId?: number) => Promise<{
+          success: boolean;
+          transactions?: Transaction[];
+          categoryTotals?: Array<{ category_name: string; total_amount: number }>;
+          merchantTotals?: Array<{ payee_name: string; total_amount: number }>;
+          error?: string;
+        }>;
+        autoCategorizeMonth: (month: string, accountId?: number) => Promise<{
+          success: boolean;
+          updatedCount?: number;
+          totalConsidered?: number;
+          message?: string;
+          error?: string;
+        }>;
       };
       categories: {
         getAll: () => Promise<Category[]>;
@@ -57,7 +73,17 @@ declare global {
         update: (id: number, category: Category) => Promise<{ success: boolean }>;
         delete: (id: number) => Promise<{ success: boolean }>;
       };
-      
+
+      debug: {
+        getCategories: () => Promise<Array<{
+          category_id: number;
+          name: string;
+          type: string;
+          parent_category_id: number | null;
+        }>>;
+        migrateCategories: () => Promise<{ success: boolean; changes?: { renamed: Array<{ from: string; to: string; id: number }>; inserted: Array<{ name: string; type: string; id: number }> }; error?: string }>;
+        seedFeedbackFromWF: () => Promise<{ success: boolean; inserted?: number; skippedNoCategory?: number; error?: string }>;
+      };
       payees: {
         getAll: () => Promise<Payee[]>;
         getById: (id: number) => Promise<Payee | null>;
@@ -66,6 +92,7 @@ declare global {
         findByName: (name: string) => Promise<{ payee: Payee | null, success: boolean, error?: string }>;
         update: (id: number, payee: Payee) => Promise<{ success: boolean, error?: string }>;
         delete: (id: number) => Promise<{ success: boolean, error?: string }>;
+        bulkDelete: (ids: number[]) => Promise<{ success: boolean, deletedCount: number, error?: string }>;
         getEnhanced: () => Promise<EnhancedPayee[]>;
       };
       

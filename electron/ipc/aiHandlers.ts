@@ -20,6 +20,27 @@ const initializeAIServices = async (db?: any) => {
     categorizationService = new TransactionCategorizationService();
     console.log('Rule-based categorization service initialized (Phase 1)');
   }
+
+  // Initialize learning table for feedback-based improvements (Phase 2)
+  if (dbInstance) {
+    try {
+      dbInstance.prepare(`
+        CREATE TABLE IF NOT EXISTS ai_categorization_feedback (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          transaction_id INTEGER,
+          payee_id INTEGER,
+          payee_name TEXT,
+          category_id INTEGER,
+          category_name TEXT,
+          description TEXT,
+          amount REAL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+    } catch (error) {
+      console.error('Failed to initialize ai_categorization_feedback table:', error);
+    }
+  }
 };
 
 // Helper function to ensure database is ready
@@ -85,6 +106,30 @@ ipcMain.handle('ai:categorizeTransaction', async (event, transaction: Transactio
       existingPayees
     );
 
+    // Apply learned category override if strong feedback exists for this payee
+    const payeeId = (transaction as any).payee_id as number | undefined;
+    const payeeName = (transaction as any).payee_name as string | undefined;
+    const learned = getLearnedCategoryForPayee(payeeId, payeeName);
+
+    if (learned) {
+      const learnedCategory = availableCategories.find(
+        (c: Category) => c.category_id === learned.category_id
+      );
+
+      if (learnedCategory) {
+        const learnedPrediction = {
+          category: learnedCategory,
+          confidence: 0.9
+        };
+
+        const remainingPredictions = result.categoryPredictions.filter(
+          p => p.category.category_id !== learnedCategory.category_id
+        );
+
+        result.categoryPredictions = [learnedPrediction, ...remainingPredictions];
+      }
+    }
+
     return {
       success: true,
       predictions: result.categoryPredictions,
@@ -136,6 +181,33 @@ ipcMain.handle('ai:batchCategorizeTransactions', async (event, transactions: Tra
     // Convert Map to Object for IPC transmission
     const resultObj: { [key: number]: any } = {};
     results.forEach((result, transactionId) => {
+      const tx = transactions.find(t => t.transaction_id === transactionId);
+
+      if (tx) {
+        const payeeId = (tx as any).payee_id as number | undefined;
+        const payeeName = (tx as any).payee_name as string | undefined;
+        const learned = getLearnedCategoryForPayee(payeeId, payeeName);
+
+        if (learned) {
+          const learnedCategory = availableCategories.find(
+            (c: Category) => c.category_id === learned.category_id
+          );
+
+          if (learnedCategory) {
+            const learnedPrediction = {
+              category: learnedCategory,
+              confidence: 0.9
+            };
+
+            const remainingPredictions = result.categoryPredictions.filter(
+              p => p.category.category_id !== learnedCategory.category_id
+            );
+
+            result.categoryPredictions = [learnedPrediction, ...remainingPredictions];
+          }
+        }
+      }
+
       resultObj[transactionId] = {
         categoryPredictions: result.categoryPredictions,
         payeeExtraction: result.payeeExtraction,
@@ -159,7 +231,49 @@ ipcMain.handle('ai:batchCategorizeTransactions', async (event, transactions: Tra
   }
 });
 
-// Learn from User Feedback
+// Helper: get dominant learned category for a payee
+const getLearnedCategoryForPayee = (payeeId?: number | null, payeeName?: string | null): { category_id: number; category_name: string } | null => {
+  if (!dbInstance) return null;
+
+  try {
+    if (payeeId) {
+      const row = dbInstance.prepare(`
+        SELECT category_id, category_name, COUNT(*) as count
+        FROM ai_categorization_feedback
+        WHERE payee_id = ?
+        GROUP BY category_id, category_name
+        ORDER BY COUNT(*) DESC
+        LIMIT 1
+      `).get(payeeId);
+
+      if (row && row.category_id) {
+        return { category_id: row.category_id, category_name: row.category_name };
+      }
+    }
+
+    const normalizedName = (payeeName || '').trim().toLowerCase();
+    if (normalizedName.length === 0) return null;
+
+    const rowByName = dbInstance.prepare(`
+      SELECT category_id, category_name, COUNT(*) as count
+      FROM ai_categorization_feedback
+      WHERE LOWER(payee_name) = ?
+      GROUP BY category_id, category_name
+      ORDER BY COUNT(*) DESC
+      LIMIT 1
+    `).get(normalizedName);
+
+    if (rowByName && rowByName.category_id) {
+      return { category_id: rowByName.category_id, category_name: rowByName.category_name };
+    }
+  } catch (error) {
+    console.error('Error reading learned category for payee:', error);
+  }
+
+  return null;
+};
+
+// Learn from User Feedback (Phase 2: persistent learning)
 ipcMain.handle('ai:learnFromFeedback', async (event, feedback: any) => {
   try {
     await initializeAIServices();
@@ -168,11 +282,43 @@ ipcMain.handle('ai:learnFromFeedback', async (event, feedback: any) => {
       throw new Error('Categorization service not initialized');
     }
 
-    // Log feedback for future learning (Phase 2+)
+    // Log feedback for future learning (Phase 2)
     console.log('User feedback received:', feedback);
 
-    // If feedback includes transaction and correct category, use the learning method
+    // If feedback includes transaction and correct category, persist it
     if (feedback.transaction && feedback.correctCategory) {
+      try {
+        if (dbInstance) {
+          const tx = feedback.transaction as Transaction;
+          const cat = feedback.correctCategory as Category;
+          const payee = feedback.correctPayee as Payee | undefined;
+
+          dbInstance.prepare(`
+            INSERT INTO ai_categorization_feedback (
+              transaction_id,
+              payee_id,
+              payee_name,
+              category_id,
+              category_name,
+              description,
+              amount
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            tx.transaction_id || null,
+            payee?.payee_id || null,
+            payee?.name || tx.payee_name || null,
+            cat.category_id || null,
+            cat.name || null,
+            tx.description || null,
+            tx.amount || null
+          );
+        }
+      } catch (dbError) {
+        console.error('Error writing feedback to ai_categorization_feedback:', dbError);
+      }
+
+      // Preserve existing hook for potential in-memory learning
       categorizationService.learnFromCorrection(
         feedback.transaction,
         feedback.correctCategory,

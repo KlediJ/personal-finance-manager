@@ -318,6 +318,24 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
 
       await window.api.transactions.update(transactionId, updateData);
 
+      // Send feedback to AI service for future learning (no-op in Phase 1)
+      try {
+        if (window.api && window.api.ai && window.api.ai.learnFromFeedback) {
+          const correctCategory = categories.find(c => c.category_id === categoryId);
+          const correctPayee = payeeId
+            ? { payee_id: payeeId, name: transaction.suggestedPayee || '' }
+            : undefined;
+
+          await window.api.ai.learnFromFeedback({
+            transaction,
+            correctCategory,
+            correctPayee
+          });
+        }
+      } catch (feedbackError) {
+        console.error('Error sending feedback to AI service:', feedbackError);
+      }
+
       // Remove from uncategorized list
       setUncategorizedTransactions(prev => 
         prev.filter(t => t.transaction_id !== transactionId)
@@ -354,6 +372,26 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
         }
 
         await window.api.transactions.update(transactionId, updateData);
+
+        // Send feedback to AI service for future learning (no-op in Phase 1)
+        try {
+          if (window.api && window.api.ai && window.api.ai.learnFromFeedback) {
+            const correctCategory = categoryId
+              ? categories.find(c => c.category_id === categoryId)
+              : undefined;
+
+            await window.api.ai.learnFromFeedback({
+              transaction,
+              correctCategory,
+              correctPayee: {
+                payee_id: payeeResult.id,
+                name: payeeName
+              }
+            });
+          }
+        } catch (feedbackError) {
+          console.error('Error sending feedback to AI service:', feedbackError);
+        }
 
         // Remove from uncategorized list
         setUncategorizedTransactions(prev => 
@@ -396,6 +434,20 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
         ...transaction,
         category_id: categoryId
       });
+
+      // Send manual categorization to AI service for future learning (no-op in Phase 1)
+      try {
+        if (window.api && window.api.ai && window.api.ai.learnFromFeedback) {
+          const correctCategory = categories.find(c => c.category_id === categoryId);
+
+          await window.api.ai.learnFromFeedback({
+            transaction,
+            correctCategory
+          });
+        }
+      } catch (feedbackError) {
+        console.error('Error sending manual feedback to AI service:', feedbackError);
+      }
 
       // Remove from uncategorized list
       setUncategorizedTransactions(prev => 

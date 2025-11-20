@@ -74,12 +74,6 @@ const fieldMappings: FieldMapping[] = [
     label: 'Category',
     required: false,
     description: 'Transaction category'
-  },
-  {
-    key: 'status',
-    label: 'Status',
-    required: false,
-    description: 'Transaction status (pending, cleared, reconciled)'
   }
 ];
 

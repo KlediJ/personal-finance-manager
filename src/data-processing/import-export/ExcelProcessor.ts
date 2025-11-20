@@ -1,5 +1,5 @@
 import { Workbook, Worksheet, Cell, Row } from 'exceljs';
-import { Transaction, TransactionType, TransactionStatus } from '../../data-storage/models/Transaction';
+import { Transaction, TransactionType } from '../../data-storage/models/Transaction';
 import { Account } from '../../data-storage/models/Account';
 
 /**
@@ -141,8 +141,7 @@ export class ExcelProcessor {
       { header: 'Description', key: 'description', width: 35 },
       { header: 'Category', key: 'category', width: 20 },
       { header: 'Amount', key: 'amount', width: 12 },
-      { header: 'Type', key: 'type', width: 10 },
-      { header: 'Status', key: 'status', width: 12 }
+      { header: 'Type', key: 'type', width: 10 }
     ];
     
     // Style header row
@@ -180,8 +179,7 @@ export class ExcelProcessor {
         description: t.description || '',
         category: t.category_name || '',
         amount: t.amount,
-        type: t.transaction_type,
-        status: t.status
+        type: t.transaction_type
       });
       
       // Style amount cells based on transaction type

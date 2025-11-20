@@ -45,7 +45,10 @@
     "package:win": "electron-builder --win",
     "package:mac": "electron-builder --mac",
     "package:linux": "electron-builder --linux",
-    "dist": "npm run build:prod && npm run package"
+    "dist": "npm run build:prod && npm run package",
+    "eval:categorization": "node scripts/evaluate-categorization.js",
+    "inspect:categories": "node scripts/inspect-live-categories.js",
+    "seed:feedback:wf": "node scripts/seed-feedback-from-wf.js"
   },
   "author": "",
   "license": "MIT",

@@ -14,11 +14,7 @@ import {
   InputAdornment,
   FormHelperText
 } from '@mui/material';
-import {
-  Transaction,
-  TransactionStatus,
-  TransactionType
-} from '../../../data-storage/models/Transaction';
+import { Transaction, TransactionType } from '../../../data-storage/models/Transaction';
 import { Account } from '../../../data-storage/models/Account';
 import { Category } from '../../../data-storage/models/Category';
 
@@ -36,7 +32,7 @@ const defaultTransaction = (accountId?: number): Transaction => ({
   description: '',
   category_id: null,
   transaction_type: TransactionType.EXPENSE,
-  status: TransactionStatus.CLEARED
+  status: 'cleared' as any
 });
 
 const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
@@ -102,10 +98,6 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
 
     if (!formValues.transaction_type) {
       newErrors.transaction_type = 'Transaction type is required';
-    }
-
-    if (!formValues.status) {
-      newErrors.status = 'Status is required';
     }
 
     setErrors(newErrors);
@@ -274,30 +266,6 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
               </FormControl>
             </Grid>
 
-            <Grid item xs={12}>
-              <FormControl fullWidth error={!!errors.status}>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={formValues.status || ''}
-                  label="Status"
-                  onChange={event =>
-                    handleFieldChange(
-                      'status',
-                      event.target.value as TransactionStatus
-                    )
-                  }
-                >
-                  {Object.values(TransactionStatus).map(status => (
-                    <MenuItem key={status} value={status}>
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                    </MenuItem>
-                  ))}
-                </Select>
-                {errors.status && (
-                  <FormHelperText>{errors.status}</FormHelperText>
-                )}
-              </FormControl>
-            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -319,4 +287,3 @@ const TransactionFormDialog: React.FC<TransactionFormDialogProps> = ({
 };
 
 export default TransactionFormDialog;
-

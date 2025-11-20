@@ -100,6 +100,25 @@ function setupPayeeHandlers() {
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
         }
     });
+    // Bulk delete payees by IDs
+    electron_1.ipcMain.handle('payees:bulkDelete', async (_, ids) => {
+        try {
+            let deletedCount = 0;
+            for (const id of ids) {
+                if (!id)
+                    continue;
+                const success = payeeRepository.delete(id);
+                if (success) {
+                    deletedCount++;
+                }
+            }
+            return { success: true, deletedCount };
+        }
+        catch (error) {
+            console.error('Error bulk deleting payees:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
     // Get enhanced payees (with transaction stats)
     electron_1.ipcMain.handle('payees:getEnhanced', async () => {
         try {

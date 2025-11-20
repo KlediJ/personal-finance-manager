@@ -1,5 +1,375 @@
+// Helper to extract a basic payee name from a description
+function extractPayeeName(description) {
+  if (!description || !description.trim()) {
+    return null;
+  }
+
+  const desc = description.trim().toUpperCase();
+
+  // Try a few common patterns first
+  const patterns = [
+    /PURCHASE\s+AUTHORIZED\s+ON\s+\d{2}\/\d{2}\s+(.+?)(?:\s+CARD\s+\d+)?$/,
+    /DEBIT\s+CARD\s+PURCHASE\s+\d{2}\/\d{2}\s+(.+?)(?:\s+CARD\s+\d+)?$/,
+    /AUTOMATIC\s+PAYMENT\s+AUTHORIZED\s+ON\s+\d{2}\/\d{2}\s+(.+?)(?:\s+CARD\s+\d+)?$/,
+    /ONLINE\s+PAYMENT\s+TO\s+(.+?)$/,
+    /PAYMENT\s+TO\s+(.+?)$/,
+    /^([A-Z0-9\s&'-]+?)(?:\s+[A-Z]{2}\s+\d{5})?(?:\s+CARD\s+\d+)?$/,
+  ];
+
+  function cleanName(raw) {
+    let cleaned = raw.trim();
+
+    const removePatterns = [
+      /^\d{6}\s+/,                // Leading codes like "250929"
+      /\s+CARD\s+\d+.*$/i,
+      /\s+S\d{6,}.*$/i,           // Trailing S-codes
+      /\s+\d{4,}.*$/,             // Long numbers at end
+      /\s+[A-Z]{2}\s+\d{5}.*$/,   // State/zip
+      /\s+PURCHASE.*$/i,
+      /\s+PAYMENT.*$/i,
+      /\s+DEPOSIT.*$/i,
+      /\s+WITHDRAWAL.*$/i,
+      /\s+TRANSFER.*$/i,
+      /\s+AUTHORIZED.*$/i,
+      /\s+TRANSACTION.*$/i,
+      /\s+#\d+.*$/,
+    ];
+
+    for (const pattern of removePatterns) {
+      cleaned = cleaned.replace(pattern, '');
+    }
+
+    cleaned = cleaned
+      .replace(/\s+/g, ' ')
+      .replace(/[*#]+/g, '')
+      .replace(/^\W+|\W+$/g, '')
+      .trim();
+
+    // Title case
+    cleaned = cleaned.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+
+    return cleaned;
+  }
+
+  for (const pattern of patterns) {
+    const match = desc.match(pattern);
+    if (match && match[1]) {
+      const name = cleanName(match[1]);
+      if (name && name.length >= 3 && !/^\d+$/.test(name)) {
+        return name;
+      }
+    }
+  }
+
+  const cleaned = cleanName(desc);
+  if (cleaned.length >= 3 && !/^\d+$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  return null;
+}
+
+// Rule-based transaction categorization service (compiled JS version)
+let ruleCategorizationService = null;
+function getRuleCategorizationService() {
+  if (!ruleCategorizationService) {
+    try {
+      const { TransactionCategorizationService } = require('./electron/src/data-processing/ai/TransactionCategorizationService');
+      ruleCategorizationService = new TransactionCategorizationService();
+      console.log('Rule-based TransactionCategorizationService initialized for auto-categorization');
+    } catch (error) {
+      console.error('Failed to initialize TransactionCategorizationService for auto-categorization:', error);
+      ruleCategorizationService = null;
+    }
+  }
+  return ruleCategorizationService;
+}
+
+// Helper to read dominant learned category for a payee/description from feedback table
+function getLearnedCategoryForPayeeDev(payeeId, payeeName, description) {
+  try {
+    // Prefer payee_id when available
+    if (payeeId) {
+      const row = db.prepare(`
+        SELECT category_id, category_name, COUNT(*) as count
+        FROM ai_categorization_feedback
+        WHERE payee_id = ?
+        GROUP BY category_id, category_name
+        ORDER BY COUNT(*) DESC
+        LIMIT 1
+      `).get(payeeId);
+
+      if (row && row.category_id) {
+        return { category_id: row.category_id, category_name: row.category_name };
+      }
+    }
+
+    const normalizedName = (payeeName || '').trim().toLowerCase();
+    if (!normalizedName) return null;
+
+    const rowByName = db.prepare(`
+      SELECT category_id, category_name, COUNT(*) as count
+      FROM ai_categorization_feedback
+      WHERE LOWER(payee_name) = ?
+      GROUP BY category_id, category_name
+      ORDER BY COUNT(*) DESC
+      LIMIT 1
+    `).get(normalizedName);
+
+    if (rowByName && rowByName.category_id) {
+      return { category_id: rowByName.category_id, category_name: rowByName.category_name };
+    }
+
+    const normalizedDesc = (description || '').trim().toLowerCase();
+    if (!normalizedDesc) return null;
+
+    const rowByDesc = db.prepare(`
+      SELECT category_id, category_name, COUNT(*) as count
+      FROM ai_categorization_feedback
+      WHERE LOWER(description) = ?
+      GROUP BY category_id, category_name
+      ORDER BY COUNT(*) DESC
+      LIMIT 1
+    `).get(normalizedDesc);
+
+    if (rowByDesc && rowByDesc.category_id) {
+      return { category_id: rowByDesc.category_id, category_name: rowByDesc.category_name };
+    }
+  } catch (error) {
+    console.error('Error reading learned category for payee (dev):', error);
+  }
+
+  return null;
+}
+
 // Set up IPC handlers for transaction operations
 function setupTransactionHandlers() {
+  // Debug: get live categories snapshot
+  ipcMain.handle('debug:getCategories', () => {
+    const stmt = db.prepare(`
+      SELECT 
+        category_id,
+        name,
+        type,
+        parent_category_id
+      FROM categories
+      ORDER BY type, name, category_id
+    `);
+    return stmt.all();
+  });
+
+  // Debug: migrate categories to canonical taxonomy (idempotent)
+  ipcMain.handle('debug:migrateCategories', () => {
+    try {
+      db.prepare('BEGIN TRANSACTION').run();
+
+      const changes = {
+        renamed: [],
+        inserted: []
+      };
+
+      // 1) Rename "Utilities" -> "Bills & Utilities" if present
+      const existingUtilities = db
+        .prepare(`SELECT category_id, name FROM categories WHERE name = 'Utilities'`)
+        .get();
+
+      if (existingUtilities) {
+        db.prepare(`
+          UPDATE categories
+          SET name = 'Bills & Utilities', updated_at = CURRENT_TIMESTAMP
+          WHERE category_id = ?
+        `).run(existingUtilities.category_id);
+
+        changes.renamed.push({
+          from: existingUtilities.name,
+          to: 'Bills & Utilities',
+          id: existingUtilities.category_id
+        });
+      }
+
+      // 2) Ensure core expense categories exist
+      const ensureCategory = (name, type) => {
+        const existing = db
+          .prepare(`SELECT category_id, name FROM categories WHERE LOWER(name) = LOWER(?)`)
+          .get(name);
+
+        if (existing) {
+          return existing.category_id;
+        }
+
+        const result = db
+          .prepare(`
+            INSERT INTO categories (name, type, created_at, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `)
+          .run(name, type);
+
+        changes.inserted.push({
+          name,
+          type,
+          id: result.lastInsertRowid
+        });
+
+        return result.lastInsertRowid;
+      };
+
+      // Shopping & Retail
+      ensureCategory('Shopping', 'expense');
+
+      // Health & Medical / Fitness
+      ensureCategory('Health & Fitness', 'expense');
+
+      // Alcohol & Bars
+      ensureCategory('Alcohol & Bars', 'expense');
+
+      // Fees & Charges
+      ensureCategory('Fees & Charges', 'expense');
+
+      db.prepare('COMMIT').run();
+
+      return {
+        success: true,
+        changes
+      };
+    } catch (error) {
+      try {
+        db.prepare('ROLLBACK').run();
+      } catch (_) {
+        // ignore rollback errors
+      }
+      console.error('Error in debug:migrateCategories:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  // Debug: seed ai_categorization_feedback from WF labeled CSV (dev only)
+  ipcMain.handle('debug:seedFeedbackFromWF', () => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const Papa = require('papaparse');
+
+      const csvPath = path.join(__dirname, 'docs', 'WF_Checking_092025_raw.csv');
+      if (!fs.existsSync(csvPath)) {
+        return {
+          success: false,
+          error: `Labeled CSV not found at ${csvPath}`
+        };
+      }
+
+      const csvContent = fs.readFileSync(csvPath, 'utf8');
+      const parsed = Papa.parse(csvContent, {
+        header: true,
+        skipEmptyLines: true
+      });
+
+      const rows = parsed.data;
+
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS ai_categorization_feedback (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          transaction_id INTEGER,
+          payee_id INTEGER,
+          payee_name TEXT,
+          category_id INTEGER,
+          category_name TEXT,
+          description TEXT,
+          amount REAL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+
+      const categories = db.prepare('SELECT * FROM categories').all();
+      const categoryByName = new Map();
+      for (const c of categories) {
+        categoryByName.set(c.name.toLowerCase(), c);
+      }
+
+      const findOrCreatePayee = db.prepare(`
+        INSERT INTO payees (name, default_category_id, created_at, updated_at)
+        SELECT ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        WHERE NOT EXISTS (SELECT 1 FROM payees WHERE LOWER(name) = LOWER(?));
+      `);
+
+      const selectPayee = db.prepare(`
+        SELECT * FROM payees WHERE LOWER(name) = LOWER(?) LIMIT 1;
+      `);
+
+      const insertFeedback = db.prepare(`
+        INSERT INTO ai_categorization_feedback (
+          transaction_id,
+          payee_id,
+          payee_name,
+          category_id,
+          category_name,
+          description,
+          amount
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      let inserted = 0;
+      let skippedNoCategory = 0;
+
+      db.prepare('BEGIN TRANSACTION').run();
+
+      for (const row of rows) {
+        const payeeLabel = (row.payee_label || '').trim();
+        const categoryLabel = (row.category_name_label || '').trim();
+        const description = row.description_raw || '';
+        const amount = row.amount != null ? Number(row.amount) : null;
+
+        if (!payeeLabel || !categoryLabel) {
+          continue;
+        }
+
+        const category = categoryByName.get(categoryLabel.toLowerCase());
+        if (!category) {
+          skippedNoCategory++;
+          continue;
+        }
+
+        // Ensure payee exists
+        findOrCreatePayee.run(payeeLabel, payeeLabel);
+        const payee = selectPayee.get(payeeLabel);
+
+        insertFeedback.run(
+          null,
+          payee ? payee.payee_id : null,
+          payeeLabel,
+          category.category_id,
+          category.name,
+          description,
+          amount
+        );
+
+        inserted++;
+      }
+
+      db.prepare('COMMIT').run();
+
+      return {
+        success: true,
+        inserted,
+        skippedNoCategory
+      };
+    } catch (error) {
+      try {
+        db.prepare('ROLLBACK').run();
+      } catch (_) {
+        // ignore
+      }
+      console.error('Error in debug:seedFeedbackFromWF:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
   // Get all transactions
   ipcMain.handle('transactions:getAll', () => {
     const stmt = db.prepare(`
@@ -338,6 +708,245 @@ function setupTransactionHandlers() {
       ORDER BY t.date DESC
     `);
     return stmt.all(status);
+  });
+
+  // Get monthly activity with basic summaries
+  ipcMain.handle('transactions:getMonthlyActivity', (_, month, accountId) => {
+    try {
+      const startDate = `${month}-01`;
+
+      let query = `
+        SELECT t.*, 
+               a.name as account_name,
+               c.name as category_name,
+               p.name as payee_name
+        FROM transactions t
+        LEFT JOIN accounts a ON t.account_id = a.account_id
+        LEFT JOIN categories c ON t.category_id = c.category_id
+        LEFT JOIN payees p ON t.payee_id = p.payee_id
+        WHERE t.date >= ?
+          AND t.date < date(?, '+1 month')
+      `;
+
+      const params = [startDate, startDate];
+
+      if (typeof accountId === 'number') {
+        query += ' AND t.account_id = ?';
+        params.push(accountId);
+      }
+
+      query += ' ORDER BY t.date ASC, t.transaction_id ASC';
+
+      const stmt = db.prepare(query);
+      const transactions = stmt.all(...params);
+
+      const categoryTotals = {};
+      const merchantTotals = {};
+
+      for (const t of transactions) {
+        const categoryKey = t.category_name || 'Uncategorized';
+        const payeeKey = t.payee_name || 'Unlabeled';
+
+        categoryTotals[categoryKey] = (categoryTotals[categoryKey] || 0) + t.amount;
+        merchantTotals[payeeKey] = (merchantTotals[payeeKey] || 0) + t.amount;
+      }
+
+      const categorySummary = Object.entries(categoryTotals).map(([name, total]) => ({
+        category_name: name,
+        total_amount: total
+      }));
+
+      const merchantSummary = Object.entries(merchantTotals).map(([name, total]) => ({
+        payee_name: name,
+        total_amount: total
+      }));
+
+      return {
+        success: true,
+        transactions,
+        categoryTotals: categorySummary,
+        merchantTotals: merchantSummary
+      };
+    } catch (error) {
+      console.error('Error getting monthly activity:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  // Auto-categorize uncategorized transactions for a given month using rule-based AI
+  ipcMain.handle('transactions:autoCategorizeMonth', async (_, month, accountId) => {
+    try {
+      const categorizationService = getRuleCategorizationService();
+      if (!categorizationService) {
+        return {
+          success: false,
+          updatedCount: 0,
+          totalConsidered: 0,
+          message: 'Categorization service not available'
+        };
+      }
+
+      const startDate = `${month}-01`;
+
+      let txQuery = `
+        SELECT t.*, 
+               c.name as category_name,
+               p.name as payee_name
+        FROM transactions t
+        LEFT JOIN categories c ON t.category_id = c.category_id
+        LEFT JOIN payees p ON t.payee_id = p.payee_id
+        WHERE t.date >= ?
+          AND t.date < date(?, '+1 month')
+          AND (t.category_id IS NULL)
+      `;
+
+      const txParams = [startDate, startDate];
+
+      if (typeof accountId === 'number') {
+        txQuery += ' AND t.account_id = ?';
+        txParams.push(accountId);
+      }
+
+      const txStmt = db.prepare(txQuery);
+      const candidates = txStmt.all(...txParams);
+
+      if (candidates.length === 0) {
+        return {
+          success: true,
+          updatedCount: 0,
+          totalConsidered: 0,
+          message: 'No uncategorized transactions found for selected month/account.'
+        };
+      }
+
+      // Get categories and payees once for the AI service
+      const availableCategories = db.prepare('SELECT * FROM categories').all();
+      const existingPayees = db.prepare('SELECT * FROM payees').all();
+
+      const updateStmt = db.prepare(`
+        UPDATE transactions
+        SET category_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE transaction_id = ?
+      `);
+
+      db.prepare('BEGIN TRANSACTION').run();
+
+      let updatedCount = 0;
+      let totalConsidered = 0;
+
+      for (const tx of candidates) {
+        totalConsidered++;
+
+        // Transfers: map to a transfer-type category (e.g. "Transfers") and skip AI
+        if (tx.transaction_type === 'transfer') {
+          const transferCategory = availableCategories.find(
+            c => c.type === 'transfer' && c.name.toLowerCase().includes('transfer')
+          );
+
+          if (transferCategory) {
+            const updateResult = updateStmt.run(
+              transferCategory.category_id,
+              tx.transaction_id
+            );
+            if (updateResult.changes > 0) {
+              updatedCount++;
+            }
+          }
+          continue;
+        }
+
+        // Income: map to an income-type category (e.g. "Income") and skip AI
+        if (tx.transaction_type === 'income') {
+          const incomeCategory = availableCategories.find(
+            c => c.type === 'income'
+          );
+
+          if (incomeCategory) {
+            const updateResult = updateStmt.run(
+              incomeCategory.category_id,
+              tx.transaction_id
+            );
+            if (updateResult.changes > 0) {
+              updatedCount++;
+            }
+          }
+          continue;
+        }
+
+        // Expense: use rule-based AI + learned feedback
+        const transactionForAI = {
+          transaction_id: tx.transaction_id,
+          account_id: tx.account_id,
+          date: tx.date,
+          amount: tx.amount,
+          description: tx.description || '',
+          category_id: tx.category_id,
+          transaction_type: tx.transaction_type || (tx.amount > 0 ? 'income' : 'expense'),
+          status: tx.status || 'cleared',
+          payee_id: tx.payee_id
+        };
+
+        const result = await categorizationService.processTransaction(
+          transactionForAI,
+          availableCategories,
+          existingPayees
+        );
+        const topPrediction = result.categoryPredictions && result.categoryPredictions[0];
+        let predictedCategory = topPrediction?.category;
+        let predictedCategoryId = predictedCategory?.category_id;
+
+        let categoryConfidence = topPrediction?.confidence ?? 0;
+
+        const extractedPayeeName =
+          (result.payeeExtraction && result.payeeExtraction.payee && result.payeeExtraction.payee.name) ||
+          tx.payee_name ||
+          null;
+        const learned = getLearnedCategoryForPayeeDev(
+          tx.payee_id,
+          extractedPayeeName,
+          transactionForAI.description
+        );
+
+        if (learned) {
+          const learnedCategory = availableCategories.find(
+            c => c.category_id === learned.category_id
+          );
+          if (learnedCategory) {
+            predictedCategory = learnedCategory;
+            predictedCategoryId = learnedCategory.category_id;
+            categoryConfidence = 0.95;
+          }
+        }
+
+        if (!predictedCategoryId || categoryConfidence < 0.7) {
+          continue;
+        }
+
+        const updateResult = updateStmt.run(predictedCategoryId, tx.transaction_id);
+        if (updateResult.changes > 0) {
+          updatedCount++;
+        }
+      }
+
+      db.prepare('COMMIT').run();
+
+      return {
+        success: true,
+        updatedCount,
+        totalConsidered,
+        message: `Auto-categorized ${updatedCount} of ${totalConsidered} uncategorized transactions.`
+      };
+    } catch (error) {
+      console.error('Error auto-categorizing month:', error);
+      try { db.prepare('ROLLBACK').run(); } catch (_) {}
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   });
   
   // Create transfer between accounts
@@ -694,6 +1303,21 @@ function initSchema() {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Account details table for extended information (e.g., credit limits)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS account_details (
+      account_id INTEGER PRIMARY KEY,
+      credit_limit REAL,
+      interest_rate REAL,
+      statement_date INTEGER,
+      due_date INTEGER,
+      minimum_payment REAL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (account_id) REFERENCES accounts (account_id) ON DELETE CASCADE
+    )
+  `);
   
   // Transactions table
   db.exec(`
@@ -720,10 +1344,18 @@ function initSchema() {
       name TEXT NOT NULL,
       type TEXT NOT NULL DEFAULT 'expense',
       parent_category_id INTEGER,
+      icon TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Ensure icon column exists on existing databases
+  try {
+    db.exec(`ALTER TABLE categories ADD COLUMN icon TEXT`);
+  } catch (error) {
+    // Ignore error if column already exists
+  }
   
   // Add default categories if none exist
   const categoryCount = db.prepare('SELECT COUNT(*) as count FROM categories').get().count;
@@ -890,7 +1522,57 @@ function setupAccountHandlers() {
     const result = stmt.get();
     return result?.total || 0;
   });
-  
+
+  // Get extended account details (e.g., credit limit) from account_details
+  ipcMain.handle('accounts:getDetails', (_, accountId) => {
+    try {
+      const stmt = db.prepare('SELECT * FROM account_details WHERE account_id = ?');
+      const row = stmt.get(accountId);
+      return row || null;
+    } catch (error) {
+      console.error(`Error getting account details for ${accountId}:`, error);
+      throw error;
+    }
+  });
+
+  // Upsert extended account details (currently focused on credit_limit and related fields)
+  ipcMain.handle('accounts:saveDetails', (_, details) => {
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO account_details (
+          account_id,
+          credit_limit,
+          interest_rate,
+          statement_date,
+          due_date,
+          minimum_payment
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(account_id) DO UPDATE SET
+          credit_limit = COALESCE(excluded.credit_limit, account_details.credit_limit),
+          interest_rate = COALESCE(excluded.interest_rate, account_details.interest_rate),
+          statement_date = COALESCE(excluded.statement_date, account_details.statement_date),
+          due_date = COALESCE(excluded.due_date, account_details.due_date),
+          minimum_payment = COALESCE(excluded.minimum_payment, account_details.minimum_payment),
+          updated_at = CURRENT_TIMESTAMP
+      `);
+
+      stmt.run(
+        details.account_id,
+        details.credit_limit ?? null,
+        details.interest_rate ?? null,
+        details.statement_date ?? null,
+        details.due_date ?? null,
+        details.minimum_payment ?? null
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving account details:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   console.log('Account IPC handlers registered');
 }
 
@@ -951,15 +1633,14 @@ function setupCategoryHandlers() {
   ipcMain.handle('categories:create', (_, category) => {
     try {
       const stmt = db.prepare(`
-        INSERT INTO categories (name, type, parent_category_id, icon)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO categories (name, type, parent_category_id)
+        VALUES (?, ?, ?)
       `);
       
       const result = stmt.run(
         category.name,
         category.type,
-        category.parent_category_id || null,
-        category.icon || null
+        category.parent_category_id || null
       );
       
       return { id: result.lastInsertRowid, success: true };
@@ -974,7 +1655,7 @@ function setupCategoryHandlers() {
     try {
       const stmt = db.prepare(`
         UPDATE categories
-        SET name = ?, type = ?, parent_category_id = ?, icon = ?, updated_at = CURRENT_TIMESTAMP
+        SET name = ?, type = ?, parent_category_id = ?, updated_at = CURRENT_TIMESTAMP
         WHERE category_id = ?
       `);
       
@@ -982,7 +1663,6 @@ function setupCategoryHandlers() {
         category.name,
         category.type,
         category.parent_category_id || null,
-        category.icon || null,
         id
       );
       
@@ -1183,6 +1863,27 @@ function setupPayeeHandlers() {
       return { success: result.changes > 0 };
     } catch (error) {
       console.error('Error deleting payee:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Bulk delete payees
+  ipcMain.handle('payees:bulkDelete', (_, ids) => {
+    try {
+      const stmt = db.prepare('DELETE FROM payees WHERE payee_id = ?');
+      let deletedCount = 0;
+
+      for (const id of ids) {
+        if (!id) continue;
+        const result = stmt.run(id);
+        if (result.changes > 0) {
+          deletedCount++;
+        }
+      }
+
+      return { success: true, deletedCount };
+    } catch (error) {
+      console.error('Error bulk deleting payees:', error);
       return { success: false, error: error.message };
     }
   });
@@ -1434,7 +2135,7 @@ function setupLoansHandlers() {
       loan.escrow_amount || 0
     );
     
-    return { loan_id: result.lastInsertRowid };
+    return { id: result.lastInsertRowid, loan_id: result.lastInsertRowid, success: true };
   });
 
   // Update loan
@@ -1462,7 +2163,7 @@ function setupLoansHandlers() {
       id
     );
     
-    return { changes: result.changes };
+    return { success: result.changes > 0 };
   });
 
   // Delete loan
@@ -2287,6 +2988,33 @@ function setupImportExportHandlers() {
       const results = [];
       
       for (const transaction of transactions) {
+        // Derive payee_id from description when possible
+        if ((!transaction.payee_id || transaction.payee_id === null) && transaction.description) {
+          const extractedName = extractPayeeName(transaction.description);
+          if (extractedName) {
+            try {
+              const findStmt = db.prepare('SELECT payee_id FROM payees WHERE LOWER(name) = LOWER(?)');
+              const existing = findStmt.get(extractedName);
+
+              let payeeId;
+              if (existing && existing.payee_id) {
+                payeeId = existing.payee_id;
+              } else {
+                const insertPayeeStmt = db.prepare(`
+                  INSERT INTO payees (name, default_category_id)
+                  VALUES (?, NULL)
+                `);
+                const payeeResult = insertPayeeStmt.run(extractedName);
+                payeeId = payeeResult.lastInsertRowid;
+              }
+
+              transaction.payee_id = payeeId;
+            } catch (e) {
+              console.error('Error deriving payee during import:', e);
+            }
+          }
+        }
+
         // Insert the transaction
         const result = insertStmt.run(
           transaction.account_id,

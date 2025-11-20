@@ -154,9 +154,11 @@ const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
   );
 
   // Get available subtypes based on selected category type
-  const availableSubtypes = formValues.type === CategoryType.INCOME 
-    ? categorySubtypeGroups.income 
-    : categorySubtypeGroups.expense;
+  const availableSubtypes = formValues.type === CategoryType.INCOME
+    ? categorySubtypeGroups.income
+    : formValues.type === CategoryType.EXPENSE
+      ? categorySubtypeGroups.expense
+      : [];
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -176,6 +178,7 @@ const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
               >
                 <MenuItem value={CategoryType.INCOME}>Income</MenuItem>
                 <MenuItem value={CategoryType.EXPENSE}>Expense</MenuItem>
+                <MenuItem value={CategoryType.TRANSFER}>Transfer</MenuItem>
               </Select>
             </FormControl>
           </Grid>

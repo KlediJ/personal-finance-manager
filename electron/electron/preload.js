@@ -15,7 +15,9 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         create: (account) => electron_1.ipcRenderer.invoke('accounts:create', account),
         update: (id, account) => electron_1.ipcRenderer.invoke('accounts:update', id, account),
         delete: (id) => electron_1.ipcRenderer.invoke('accounts:delete', id),
-        getTotalBalance: () => electron_1.ipcRenderer.invoke('accounts:getTotalBalance')
+        getTotalBalance: () => electron_1.ipcRenderer.invoke('accounts:getTotalBalance'),
+        getDetails: (accountId) => electron_1.ipcRenderer.invoke('accounts:getDetails', accountId),
+        saveDetails: (details) => electron_1.ipcRenderer.invoke('accounts:saveDetails', details)
     },
     transactions: {
         getAll: () => electron_1.ipcRenderer.invoke('transactions:getAll'),
@@ -31,6 +33,8 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         getByCategory: (categoryId) => electron_1.ipcRenderer.invoke('transactions:getByCategory', categoryId),
         getByType: (type) => electron_1.ipcRenderer.invoke('transactions:getByType', type),
         getByStatus: (status) => electron_1.ipcRenderer.invoke('transactions:getByStatus', status),
+        getMonthlyActivity: (month, accountId) => electron_1.ipcRenderer.invoke('transactions:getMonthlyActivity', month, accountId),
+        autoCategorizeMonth: (month, accountId) => electron_1.ipcRenderer.invoke('transactions:autoCategorizeMonth', month, accountId),
         createTransfer: (fromAccountId, toAccountId, amount, description, date) => electron_1.ipcRenderer.invoke('transactions:createTransfer', fromAccountId, toAccountId, amount, description, date),
         recalculateBalances: () => electron_1.ipcRenderer.invoke('transactions:recalculateBalances'),
         bulkAssignPayee: (transactionIds, payeeId) => electron_1.ipcRenderer.invoke('transactions:bulkAssignPayee', transactionIds, payeeId),
@@ -47,6 +51,11 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         create: (category) => electron_1.ipcRenderer.invoke('categories:create', category),
         update: (id, category) => electron_1.ipcRenderer.invoke('categories:update', id, category),
         delete: (id) => electron_1.ipcRenderer.invoke('categories:delete', id)
+    },
+    debug: {
+        getCategories: () => electron_1.ipcRenderer.invoke('debug:getCategories'),
+        migrateCategories: () => electron_1.ipcRenderer.invoke('debug:migrateCategories'),
+        seedFeedbackFromWF: () => electron_1.ipcRenderer.invoke('debug:seedFeedbackFromWF')
     },
     payees: {
         getAll: () => {
@@ -68,6 +77,10 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         delete: (id) => {
             console.log('Preload: Calling payees:delete', id);
             return electron_1.ipcRenderer.invoke('payees:delete', id);
+        },
+        bulkDelete: (ids) => {
+            console.log('Preload: Calling payees:bulkDelete', ids);
+            return electron_1.ipcRenderer.invoke('payees:bulkDelete', ids);
         },
         getEnhanced: () => {
             console.log('Preload: Calling payees:getEnhanced');

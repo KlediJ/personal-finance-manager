@@ -16,7 +16,8 @@ import {
   Dialog,
   Snackbar,
   Alert,
-  Tooltip
+  Tooltip,
+  Checkbox
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -39,6 +40,8 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
   const [currentPayee, setCurrentPayee] = useState<Payee | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [payeeToDelete, setPayeeToDelete] = useState<number | null>(null);
+  const [selectedPayees, setSelectedPayees] = useState<number[]>([]);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean, message: string, severity: 'success' | 'error' }>({
     open: false,
     message: '',
@@ -99,6 +102,26 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
     setDeleteDialogOpen(true);
   };
 
+  // Toggle selection for bulk actions
+  const handleToggleSelect = (payeeId: number) => {
+    setSelectedPayees(prev => 
+      prev.includes(payeeId) ? prev.filter(id => id !== payeeId) : [...prev, payeeId]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedPayees.length === payees.length) {
+      setSelectedPayees([]);
+    } else {
+      setSelectedPayees(payees.map(p => p.payee_id!).filter(id => !!id));
+    }
+  };
+
+  const handleBulkDeleteClick = () => {
+    if (selectedPayees.length === 0) return;
+    setBulkDeleteConfirmOpen(true);
+  };
+
   // Delete payee
   const handleDeleteConfirm = async () => {
     if (payeeToDelete) {
@@ -130,6 +153,42 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
     }
     setDeleteDialogOpen(false);
     setPayeeToDelete(null);
+  };
+
+  // Bulk delete selected payees
+  const handleBulkDeleteConfirm = async () => {
+    if (selectedPayees.length === 0) {
+      setBulkDeleteConfirmOpen(false);
+      return;
+    }
+
+    try {
+      const result = await window.api.payees?.bulkDelete(selectedPayees);
+      if (result?.success) {
+        setSnackbar({
+          open: true,
+          message: `Deleted ${result.deletedCount} payees`,
+          severity: 'success'
+        });
+        setSelectedPayees([]);
+        loadPayees();
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'Failed to delete selected payees',
+          severity: 'error'
+        });
+      }
+    } catch (error) {
+      console.error('Error bulk deleting payees:', error);
+      setSnackbar({
+        open: true,
+        message: 'An error occurred while deleting selected payees',
+        severity: 'error'
+      });
+    }
+
+    setBulkDeleteConfirmOpen(false);
   };
 
   // Save payee (create or update)
@@ -235,13 +294,23 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         {!inSettingsPage && <Typography variant="h5">Payees</Typography>}
-        <Button 
-          variant="contained" 
-          startIcon={<AddIcon />}
-          onClick={handleAddPayee}
-        >
-          Add Payee
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            color="error"
+            disabled={selectedPayees.length === 0}
+            onClick={handleBulkDeleteClick}
+          >
+            Delete Selected
+          </Button>
+          <Button 
+            variant="contained" 
+            startIcon={<AddIcon />}
+            onClick={handleAddPayee}
+          >
+            Add Payee
+          </Button>
+        </Box>
       </Box>
 
       {loading ? (
@@ -253,6 +322,13 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
           <Table>
             <TableHead>
               <TableRow>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    indeterminate={selectedPayees.length > 0 && selectedPayees.length < payees.length}
+                    checked={payees.length > 0 && selectedPayees.length === payees.length}
+                    onChange={handleToggleSelectAll}
+                  />
+                </TableCell>
                 <TableCell>Name</TableCell>
                 <TableCell>Business Type</TableCell>
                 <TableCell>Default Category</TableCell>
@@ -263,7 +339,7 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
             <TableBody>
               {payees.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} align="center">
+                  <TableCell colSpan={6} align="center">
                     <Typography sx={{ py: 2 }}>
                       No payees found in database. Click 'Add Payee' to create one.
                     </Typography>
@@ -272,6 +348,12 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
               ) : (
                 payees.map((payee) => (
                   <TableRow key={payee.payee_id}>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        checked={selectedPayees.includes(payee.payee_id!)}
+                        onChange={() => handleToggleSelect(payee.payee_id!)}
+                      />
+                    </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Tooltip title={formatBusinessType(payee.details?.business_type)}>
@@ -346,6 +428,33 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
               onClick={handleDeleteConfirm}
             >
               Delete
+            </Button>
+          </Box>
+        </Box>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog
+        open={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+      >
+        <Box sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Delete Multiple Payees
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Are you sure you want to delete {selectedPayees.length} selected payees? This action cannot be undone.
+          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button onClick={() => setBulkDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="contained" 
+              color="error"
+              onClick={handleBulkDeleteConfirm}
+            >
+              Delete {selectedPayees.length} Payees
             </Button>
           </Box>
         </Box>

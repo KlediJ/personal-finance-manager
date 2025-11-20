@@ -131,6 +131,42 @@ function setupTransactionHandlers() {
             throw error;
         }
     });
+    // Get monthly activity with basic summaries
+    electron_1.ipcMain.handle('transactions:getMonthlyActivity', async (_, month, accountId) => {
+        try {
+            const transactions = transactionRepository.getByMonth(month, accountId);
+            // Aggregate totals by category and by payee (merchant)
+            const categoryTotals = {};
+            const merchantTotals = {};
+            for (const t of transactions) {
+                const categoryKey = t.category_name || 'Uncategorized';
+                const payeeKey = t.payee_name || 'Unlabeled';
+                categoryTotals[categoryKey] = (categoryTotals[categoryKey] || 0) + t.amount;
+                merchantTotals[payeeKey] = (merchantTotals[payeeKey] || 0) + t.amount;
+            }
+            const categorySummary = Object.entries(categoryTotals).map(([name, total]) => ({
+                category_name: name,
+                total_amount: total
+            }));
+            const merchantSummary = Object.entries(merchantTotals).map(([name, total]) => ({
+                payee_name: name,
+                total_amount: total
+            }));
+            return {
+                success: true,
+                transactions,
+                categoryTotals: categorySummary,
+                merchantTotals: merchantSummary
+            };
+        }
+        catch (error) {
+            console.error('Error getting monthly activity:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    });
     // Create transfer between accounts
     electron_1.ipcMain.handle('transactions:createTransfer', async (_, fromAccountId, toAccountId, amount, description, date) => {
         try {

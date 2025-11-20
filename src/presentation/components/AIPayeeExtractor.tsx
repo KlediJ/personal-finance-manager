@@ -99,6 +99,25 @@ const AIPayeeExtractor: React.FC<AIPayeeExtractorProps> = ({
           onCategorySelected(bestCategory.category.category_id);
         }
       }
+
+      // Send feedback to AI service for future learning (no-op in Phase 1)
+      try {
+        if (window.api && window.api.ai && window.api.ai.learnFromFeedback) {
+          const bestCategory = extractionResult.categoryPredictions && extractionResult.categoryPredictions.length > 0
+            ? extractionResult.categoryPredictions[0].category
+            : undefined;
+
+          window.api.ai.learnFromFeedback({
+            transaction,
+            correctCategory: bestCategory,
+            correctPayee: extractionResult.payee
+          }).catch(error => {
+            console.error('Error sending payee extraction feedback to AI service:', error);
+          });
+        }
+      } catch (error) {
+        console.error('Error initiating payee extraction feedback:', error);
+      }
     }
     setShowConfirmDialog(false);
     setExtractionResult(null);

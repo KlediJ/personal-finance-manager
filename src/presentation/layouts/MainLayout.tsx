@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { styled } from '@mui/material/styles';
 import {
   AppBar,
@@ -45,7 +45,20 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     setMobileOpen(!mobileOpen);
   };
 
-  const menuItems = [
+  const menuItems = useMemo(() => {
+    let showAI = true;
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = window.localStorage.getItem('pfm.showAI');
+        if (stored === 'false') {
+          showAI = false;
+        }
+      }
+    } catch {
+      showAI = true;
+    }
+
+    const items = [
     // Core workspace
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Accounts', icon: <AccountBalanceIcon />, path: '/accounts' },
@@ -55,9 +68,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     // Supporting tools & configuration
     { text: 'Loans', icon: <HomeIcon />, path: '/loans' },
     { text: 'Credit Cards', icon: <CreditCardIcon />, path: '/credit-cards' },
-    { text: 'AI Assistant', icon: <SmartToyIcon />, path: '/ai' },
+    showAI ? { text: 'AI Assistant', icon: <SmartToyIcon />, path: '/ai' } : null,
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
-  ];
+    ];
+
+    return items.filter(Boolean) as { text: string; icon: React.ReactNode; path: string }[];
+  }, []);
 
   const drawer = (
     <div>

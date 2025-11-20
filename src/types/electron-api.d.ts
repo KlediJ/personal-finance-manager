@@ -149,12 +149,13 @@ declare global {
       ai: {
         // Status & Setup
         getStatus: () => Promise<{ 
-          status: string; 
+          status: 'loading' | 'ready' | 'error'; 
           message: string; 
           features?: any; 
+          accuracy?: any;
           models?: any;
           memory?: any;
-          error?: string 
+          error?: string;
         }>;
         updateContext: () => Promise<{ success: boolean; message?: string; error?: string }>;
         clearModels: () => Promise<{ success: boolean; message?: string; error?: string }>;
@@ -165,23 +166,33 @@ declare global {
           success: boolean; 
           statuses?: any[]; 
           memoryUsage?: any; 
-          error?: string 
+          error?: string; 
         }>;
         loadModel: (modelName: string) => Promise<{ success: boolean; message?: string; error?: string }>;
         unloadModel: (modelName: string) => Promise<{ success: boolean; message?: string; error?: string }>;
         
         // Enhanced Transaction Processing
-        categorizeTransaction: (transaction: any) => Promise<{ 
+        categorizeTransaction: (transaction: Transaction) => Promise<{ 
           success: boolean; 
           enhanced?: boolean;
           predictions?: any[]; 
           payeeExtraction?: any;
           extractedInfo?: any;
           confidence?: number;
-          error?: string 
+          error?: string; 
         }>;
-        batchCategorizeTransactions: (transactions: any[]) => Promise<{ success: boolean; results?: any; error?: string }>;
+        batchCategorizeTransactions: (transactions: Transaction[]) => Promise<{ 
+          success: boolean; 
+          results?: { [key: number]: any }; 
+          error?: string; 
+        }>;
         learnFromFeedback: (feedback: any) => Promise<{ success: boolean; message?: string; error?: string }>;
+        addCategorizationRule: (payload: any) => Promise<{
+          success: boolean;
+          ruleId?: number;
+          updatedCount?: number;
+          error?: string;
+        }>;
         
         // Enhanced Query Processing
         processQuery: (query: string) => Promise<{ 
@@ -191,7 +202,7 @@ declare global {
           modelUsed?: string;
           processingTime?: number;
           confidence?: number;
-          error?: string 
+          error?: string; 
         }>;
         
         // Financial Analysis
@@ -218,7 +229,7 @@ declare global {
         }>;
         
         // Smart Automation
-        createPayeeFromTransaction: (transaction: any) => Promise<{
+        createPayeeFromTransaction: (transaction: Transaction) => Promise<{
           success: boolean;
           payee?: any;
           confidence?: number;
@@ -242,7 +253,7 @@ declare global {
           enhanced?: boolean;
         }>;
         
-        // Legacy Functions
+        // Legacy / Utility Functions
         getUncategorizedTransactions: () => Promise<{ success: boolean; transactions?: any[]; error?: string }>;
         getStatistics: () => Promise<{ success: boolean; stats?: any; error?: string }>;
         onCategorizationProgress: (callback: (progress: number) => void) => void;
@@ -332,6 +343,7 @@ declare global {
           transactionId?: number;
         }) => Promise<{ id: number, success: boolean }>;
       };
+
     };
   }
 }

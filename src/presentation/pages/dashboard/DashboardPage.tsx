@@ -7,6 +7,8 @@ import {
   CircularProgress,
   Button,
   Chip,
+  Select,
+  MenuItem,
   useTheme
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -44,17 +46,36 @@ const DashboardPage: React.FC = () => {
 
   const [selectedPivotCategory, setSelectedPivotCategory] = useState<string | null>(null);
 
-  // Date handling helpers
-  const getCurrentMonthStart = () => {
-    const date = new Date();
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+  // Filters
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [selectedAccountId, setSelectedAccountId] = useState<number | 'all'>('all');
+  const [selectedCategoryNames, setSelectedCategoryNames] = useState<string[] | 'all'>('all');
+
+  // Date handling helpers for a given month key (YYYY-MM)
+  const getMonthStartFromKey = (key: string) => {
+    const [yearStr, monthStr] = key.split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    return `${year}-${String(month).padStart(2, '0')}-01`;
   };
-  
-  const getCurrentMonthEnd = () => {
-    const date = new Date();
-    // Set to the last day of the current month
-    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${lastDay}`;
+
+  const getMonthEndFromKey = (key: string) => {
+    const [yearStr, monthStr] = key.split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    const lastDay = new Date(year, month, 0).getDate();
+    return `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+  };
+
+  const getMonthLabelFromKey = (key: string) => {
+    const [yearStr, monthStr] = key.split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    const date = new Date(year, month - 1, 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
   // Get dashboard data
@@ -67,34 +88,38 @@ const DashboardPage: React.FC = () => {
       const accountsData = await window.api.accounts.getAll();
       setAccounts(accountsData);
       
-      // Get total balance
+      // Get total balance (always across all accounts)
       const balance = await window.api.accounts.getTotalBalance();
       setTotalBalance(balance);
       
-      // Get recent transactions (last 10)
-      const transactions = await window.api.transactions.getRecent(10);
-      console.log('Dashboard recent transactions:', transactions);
-      setRecentTransactions(transactions);
-      
       // Get current month's transactions for income/expense summary
-      const currentMonthStart = getCurrentMonthStart();
-      const currentMonthEnd = getCurrentMonthEnd();
+      const currentMonthStart = getMonthStartFromKey(selectedMonthKey);
+      const currentMonthEnd = getMonthEndFromKey(selectedMonthKey);
       const monthTransactions = await window.api.transactions.getByDateRange(
-        currentMonthStart, currentMonthEnd
+        currentMonthStart,
+        currentMonthEnd
       );
       console.log('Dashboard month transactions:', monthTransactions);
+
+      const accountFilteredMonthTx =
+        selectedAccountId === 'all'
+          ? monthTransactions
+          : monthTransactions.filter((t: any) => t.account_id === selectedAccountId);
       
-      // Calculate monthly totals and categorization progress
+      // Calculate monthly totals and categorization progress (ignore transfers and other non-income/expense types)
       let incomeTotal = 0;
       let expenseTotal = 0;
       let categorizedCount = 0;
       let uncategorizedCount = 0;
       
-      monthTransactions.forEach((t: any) => {
+      accountFilteredMonthTx.forEach((t: any) => {
         if (t.transaction_type === 'income') {
           incomeTotal += t.amount;
         } else if (t.transaction_type === 'expense') {
           expenseTotal += t.amount; // Note: expense amounts are negative
+        } else {
+          // Skip transfers and other types for the monthly summary
+          return;
         }
 
         if (t.category_id) {
@@ -109,15 +134,8 @@ const DashboardPage: React.FC = () => {
       setCurrentMonthCategorizedCount(categorizedCount);
       setCurrentMonthUncategorizedCount(uncategorizedCount);
       
-      // Get transactions for category/payee analysis (last 6 months)
-      const today = new Date();
-      const sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(today.getMonth() - 5); // 6 months including current
-      
-      const startDate = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, '0')}-01`;
-      const endDate = getCurrentMonthEnd();
-      
-      const rangeTx = await window.api.transactions.getByDateRange(startDate, endDate);
+      // Use the same filtered month transactions for category/payee analysis
+      const rangeTx = accountFilteredMonthTx;
       setRangeTransactions(rangeTx);
       
       // Process category breakdown
@@ -128,6 +146,15 @@ const DashboardPage: React.FC = () => {
       const payeeData = processPayeeData(rangeTx);
       console.log('Dashboard payee data:', payeeData);
       setPayeeSummary(payeeData);
+
+      // Derive recent transactions from the filtered month range
+      const recent = [...rangeTx]
+        .sort(
+          (a, b) =>
+            new Date(b.date).getTime() - new Date(a.date).getTime()
+        )
+        .slice(0, 10);
+      setRecentTransactions(recent);
       
     } catch (err) {
       console.error('Error loading dashboard data:', err);
@@ -197,10 +224,11 @@ const DashboardPage: React.FC = () => {
       .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   };
 
-  // Load data when component mounts
+  // Load data when component mounts and when filters change
   useEffect(() => {
     loadDashboardData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonthKey, selectedAccountId]);
 
   // Calculate net change (income + expenses)
   const netChange = currentMonthIncome + currentMonthExpenses;
@@ -212,6 +240,8 @@ const DashboardPage: React.FC = () => {
           (currentMonthCategorizedCount / totalMonthTransactions) * 100
         )
       : 0;
+
+  const monthLabel = getMonthLabelFromKey(selectedMonthKey);
 
   const pivotData = useMemo(() => {
     if (!rangeTransactions || rangeTransactions.length === 0) {
@@ -279,6 +309,20 @@ const DashboardPage: React.FC = () => {
     };
   }, [rangeTransactions, selectedPivotCategory]);
 
+  const availableCategories = useMemo(
+    () =>
+      Array.from(new Set(categorySummary.map((c: any) => c.name))).sort(),
+    [categorySummary]
+  );
+
+  const filteredCategorySummary = useMemo(() => {
+    if (selectedCategoryNames === 'all') {
+      return categorySummary;
+    }
+    const set = new Set(selectedCategoryNames);
+    return categorySummary.filter((c: any) => set.has(c.name));
+  }, [categorySummary, selectedCategoryNames]);
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -323,24 +367,24 @@ const DashboardPage: React.FC = () => {
           <Grid item xs={12} md={3}>
             <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
               <Typography color="textSecondary" gutterBottom variant="subtitle2">
-                Total Balance
+                Net This Month
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
                 <Box>
                   <Typography variant="h4" component="div">
-                    {totalBalance.toLocaleString('en-US', {
+                    {netChange.toLocaleString('en-US', {
                       style: 'currency',
                       currency: 'USD'
                     })}
                   </Typography>
                   <Typography color="textSecondary" sx={{ mt: 1 }}>
-                    Across {accounts.length} account{accounts.length !== 1 ? 's' : ''}
+                    {monthLabel}
                   </Typography>
                 </Box>
                 <AccountBalanceWalletIcon 
                   sx={{ 
                     fontSize: 48, 
-                    color: totalBalance >= 0 ? 'success.light' : 'error.light',
+                    color: netChange >= 0 ? 'success.light' : 'error.light',
                     opacity: 0.6
                   }} 
                 />
@@ -361,7 +405,7 @@ const DashboardPage: React.FC = () => {
                     })}
                   </Typography>
                   <Typography color="textSecondary" sx={{ mt: 1 }}>
-                    {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    {monthLabel}
                   </Typography>
                 </Box>
                 <ArrowUpwardIcon 
@@ -446,6 +490,90 @@ const DashboardPage: React.FC = () => {
               <Typography variant="h6" gutterBottom>
                 Spending by Category
               </Typography>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: 1,
+                  mb: 2
+                }}
+              >
+                <Typography variant="body2">Spending for</Typography>
+                <Select
+                  size="small"
+                  value={
+                    selectedCategoryNames === 'all'
+                      ? 'all'
+                      : selectedCategoryNames[0] || 'all'
+                  }
+                  onChange={(e) => {
+                    const value = e.target.value as string;
+                    if (value === 'all') {
+                      setSelectedCategoryNames('all');
+                    } else {
+                      setSelectedCategoryNames([value]);
+                    }
+                  }}
+                  sx={{ minWidth: 140 }}
+                >
+                  <MenuItem value="all">All Categories</MenuItem>
+                  {availableCategories.map((name) => (
+                    <MenuItem key={name} value={name}>
+                      {name}
+                    </MenuItem>
+                  ))}
+                </Select>
+                <Typography variant="body2">in</Typography>
+                <Select
+                  size="small"
+                  value={selectedMonthKey}
+                  onChange={(e) => setSelectedMonthKey(e.target.value as string)}
+                  sx={{ minWidth: 140 }}
+                >
+                  {Array.from({ length: 12 }).map((_, idx) => {
+                    const now = new Date();
+                    const d = new Date(
+                      now.getFullYear(),
+                      now.getMonth() - idx,
+                      1
+                    );
+                    const key = `${d.getFullYear()}-${String(
+                      d.getMonth() + 1
+                    ).padStart(2, '0')}`;
+                    return (
+                      <MenuItem key={key} value={key}>
+                        {d.toLocaleDateString('en-US', {
+                          month: 'long',
+                          year: 'numeric'
+                        })}
+                      </MenuItem>
+                    );
+                  })}
+                </Select>
+                <Typography variant="body2">in</Typography>
+                <Select
+                  size="small"
+                  value={selectedAccountId === 'all' ? 'all' : selectedAccountId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelectedAccountId(
+                      value === 'all' ? 'all' : Number(value)
+                    );
+                  }}
+                  sx={{ minWidth: 160 }}
+                >
+                  <MenuItem value="all">All Accounts</MenuItem>
+                  {accounts.map((account: any) => (
+                    <MenuItem
+                      key={account.account_id}
+                      value={account.account_id}
+                    >
+                      {account.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </Box>
               <Box sx={{ height: 300 }}>
                 <CategoryBreakdown
                   data={categorySummary}
@@ -544,12 +672,18 @@ const DashboardPage: React.FC = () => {
 
           {/* Category Summary Table with drill-down */}
           <Grid item xs={12} md={5}>
-            <CategorySummary data={categorySummary} transactions={recentTransactions} />
+            <CategorySummary
+              data={filteredCategorySummary}
+              transactions={rangeTransactions}
+            />
           </Grid>
-
+ 
           {/* Payee Summary */}
           <Grid item xs={12} md={7}>
-            <PayeeSummary data={payeeSummary} transactions={recentTransactions} />
+            <PayeeSummary
+              data={payeeSummary}
+              transactions={rangeTransactions}
+            />
           </Grid>
         </Grid>
       )}

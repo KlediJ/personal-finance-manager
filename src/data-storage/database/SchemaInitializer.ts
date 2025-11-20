@@ -31,6 +31,9 @@ export class SchemaInitializer {
     this.createAILearningDataTable(db);
     this.createAIPredictionCacheTable(db);
     this.createAIPerformanceMetricsTable(db);
+
+    // User-defined categorization rules
+    this.createCategorizationRulesTable(db);
     
     console.log('Database schema initialized');
   }
@@ -462,6 +465,22 @@ export class SchemaInitializer {
         measurement_period_end TIMESTAMP,
         sample_size INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  }
+
+  private static createCategorizationRulesTable(db: any): void {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS categorization_rules (
+        rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        match_string TEXT NOT NULL,
+        match_type TEXT NOT NULL,
+        match_amount REAL,
+        target_category_id INTEGER NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (target_category_id) REFERENCES categories (category_id)
       )
     `);
   }

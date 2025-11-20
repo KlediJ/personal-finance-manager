@@ -8,6 +8,15 @@ import { Payee } from '../../src/data-storage/models/Payee';
 let categorizationService: TransactionCategorizationService | null = null;
 let dbInstance: any = null;
 
+interface CategorizationRule {
+  rule_id?: number;
+  match_string: string;
+  match_type: 'CONTAINS' | 'EXACT_MATCH';
+  match_amount?: number | null;
+  target_category_id: number;
+  active: number;
+}
+
 // Initialize AI services with database instance
 const initializeAIServices = async (db?: any) => {
   // Store database instance if provided
@@ -50,6 +59,76 @@ const ensureDatabaseReady = (): boolean => {
     return false;
   }
   return true;
+};
+
+// Load all active categorization rules
+const getActiveCategorizationRules = (): CategorizationRule[] => {
+  if (!dbInstance) return [];
+  try {
+    const rows = dbInstance.prepare(`
+      SELECT rule_id, match_string, match_type, match_amount, target_category_id, active
+      FROM categorization_rules
+      WHERE active = 1
+    `).all();
+    return rows as CategorizationRule[];
+  } catch (error) {
+    console.error('Error loading categorization rules:', error);
+    return [];
+  }
+};
+
+// Apply rules to a single transaction, returns a matching rule if found
+const findMatchingRuleForTransaction = (
+  tx: Transaction,
+  rules: CategorizationRule[]
+): CategorizationRule | null => {
+  if (!tx || !tx.description) return null;
+
+  const description = (tx.description || '').toString();
+  const amount = tx.amount;
+
+  const normalize = (s: string) => s.toUpperCase();
+
+  const specificRules = rules.filter(r => r.match_amount !== null && r.match_amount !== undefined);
+  const generalRules = rules.filter(r => r.match_amount === null || r.match_amount === undefined);
+
+  // Helper: does rule match description and amount?
+  const matches = (rule: CategorizationRule): boolean => {
+    if (!rule.match_string) return false;
+    const pattern = normalize(rule.match_string);
+    const haystack = normalize(description);
+
+    let descMatch = false;
+    if (rule.match_type === 'EXACT_MATCH') {
+      descMatch = haystack === pattern;
+    } else {
+      descMatch = haystack.includes(pattern);
+    }
+
+    if (!descMatch) return false;
+
+    if (rule.match_amount !== null && rule.match_amount !== undefined) {
+      return amount === rule.match_amount;
+    }
+
+    return true;
+  };
+
+  // 1. Specific rules: match_string + amount
+  for (const rule of specificRules) {
+    if (matches(rule)) {
+      return rule;
+    }
+  }
+
+  // 2. General rules: match_string only
+  for (const rule of generalRules) {
+    if (matches(rule)) {
+      return rule;
+    }
+  }
+
+  return null;
 };
 
 // AI Status
@@ -100,11 +179,41 @@ ipcMain.handle('ai:categorizeTransaction', async (event, transaction: Transactio
     const availableCategories = dbInstance.prepare('SELECT * FROM categories').all();
     const existingPayees = dbInstance.prepare('SELECT * FROM payees').all();
 
-    const result = await categorizationService.processTransaction(
-      transaction,
-      availableCategories,
-      existingPayees
-    );
+    // Apply user-defined categorization rules first
+    const rules = getActiveCategorizationRules();
+    const matchedRule = findMatchingRuleForTransaction(transaction, rules);
+
+    let result: CategorizationResult;
+
+    if (matchedRule) {
+      const ruleCategory = (availableCategories as Category[]).find(
+        c => c.category_id === matchedRule.target_category_id
+      );
+
+      if (ruleCategory) {
+        result = {
+          categoryPredictions: [{
+            category: ruleCategory,
+            confidence: 0.99
+          }],
+          payeeExtraction: null,
+          extractedInfo: {},
+          confidence: 0.99
+        };
+      } else {
+        result = await categorizationService.processTransaction(
+          transaction,
+          availableCategories,
+          existingPayees
+        );
+      }
+    } else {
+      result = await categorizationService.processTransaction(
+        transaction,
+        availableCategories,
+        existingPayees
+      );
+    }
 
     // Apply learned category override if strong feedback exists for this payee
     const payeeId = (transaction as any).payee_id as number | undefined;
@@ -160,10 +269,11 @@ ipcMain.handle('ai:batchCategorizeTransactions', async (event, transactions: Tra
       throw new Error('Database not available');
     }
 
-    // Get categories and payees directly from database
+    // Get categories, payees, and rules directly from database
     const availableCategories = dbInstance.prepare('SELECT * FROM categories').all();
     const existingPayees = dbInstance.prepare('SELECT * FROM payees').all();
-    console.log(`Using ${availableCategories.length} categories, ${existingPayees.length} payees`);
+    const rules = getActiveCategorizationRules();
+    console.log(`Using ${availableCategories.length} categories, ${existingPayees.length} payees, ${rules.length} rules`);
 
     console.log(`Starting batch categorization of ${transactions.length} transactions`);
 
@@ -178,12 +288,32 @@ ipcMain.handle('ai:batchCategorizeTransactions', async (event, transactions: Tra
       }
     );
 
-    // Convert Map to Object for IPC transmission
+    // Convert Map to Object for IPC transmission, applying rules and learning overrides
     const resultObj: { [key: number]: any } = {};
     results.forEach((result, transactionId) => {
       const tx = transactions.find(t => t.transaction_id === transactionId);
 
       if (tx) {
+        // Apply user-defined rules first
+        const rule = findMatchingRuleForTransaction(tx, rules);
+        if (rule) {
+          const ruleCategory = (availableCategories as Category[]).find(
+            (c: Category) => c.category_id === rule.target_category_id
+          );
+          if (ruleCategory) {
+            const rulePrediction = {
+              category: ruleCategory,
+              confidence: 0.99
+            };
+
+            const remainingPredictions = result.categoryPredictions.filter(
+              p => p.category.category_id !== ruleCategory.category_id
+            );
+
+            result.categoryPredictions = [rulePrediction, ...remainingPredictions];
+          }
+        }
+
         const payeeId = (tx as any).payee_id as number | undefined;
         const payeeName = (tx as any).payee_name as string | undefined;
         const learned = getLearnedCategoryForPayee(payeeId, payeeName);
@@ -332,6 +462,83 @@ ipcMain.handle('ai:learnFromFeedback', async (event, feedback: any) => {
     };
   } catch (error) {
     console.error('Error processing feedback:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+});
+
+// Create a user-defined categorization rule and optionally apply to existing transactions
+ipcMain.handle('ai:addCategorizationRule', async (event, payload: any) => {
+  try {
+    await initializeAIServices();
+
+    if (!ensureDatabaseReady()) {
+      throw new Error('Database not available');
+    }
+
+    const { transaction, categoryId, scope } = payload || {};
+    if (!transaction || !categoryId) {
+      throw new Error('Invalid rule payload');
+    }
+
+    const description: string = (transaction.description || '').toString();
+    const amount: number = transaction.amount;
+
+    // Derive basic merchant pattern from description (simple heuristic: use full description)
+    const matchString = description.trim();
+    const matchType: 'CONTAINS' | 'EXACT_MATCH' = 'CONTAINS';
+
+    let matchAmount: number | null = null;
+    if (scope === 'MERCHANT_AMOUNT') {
+      matchAmount = amount;
+    }
+
+    const insertStmt = dbInstance.prepare(`
+      INSERT INTO categorization_rules (
+        match_string, match_type, match_amount, target_category_id, active
+      ) VALUES (?, ?, ?, ?, 1)
+    `);
+
+    const info = insertStmt.run(
+      matchString,
+      matchType,
+      matchAmount,
+      categoryId
+    );
+
+    const ruleId = info.lastInsertRowid as number;
+
+    // Apply rule to existing uncategorized transactions (to keep behavior conservative)
+    let updatedCount = 0;
+    try {
+      const updateSql = `
+        UPDATE transactions
+        SET category_id = ?
+        WHERE category_id IS NULL
+          AND description LIKE ?
+          ${matchAmount !== null ? 'AND amount = ?' : ''}
+      `;
+
+      const params: any[] = [categoryId, `%${matchString}%`];
+      if (matchAmount !== null) {
+        params.push(matchAmount);
+      }
+
+      const result = dbInstance.prepare(updateSql).run(...params);
+      updatedCount = result.changes || 0;
+    } catch (applyError) {
+      console.error('Error applying categorization rule to existing transactions:', applyError);
+    }
+
+    return {
+      success: true,
+      ruleId,
+      updatedCount
+    };
+  } catch (error) {
+    console.error('Error creating categorization rule:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'

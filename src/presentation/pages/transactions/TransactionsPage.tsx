@@ -32,7 +32,6 @@ import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
-import CalculateIcon from '@mui/icons-material/Calculate';
 import { useLocation } from 'react-router-dom';
 import { Transaction, TransactionType } from '../../../data-storage/models/Transaction';
 import { Account } from '../../../data-storage/models/Account';
@@ -303,40 +302,6 @@ const TransactionsPage: React.FC = () => {
     setTransactionToDelete(null);
   };
 
-  // Handle balance recalculation
-  const handleRecalculateBalances = async () => {
-    try {
-      setSnackbar({
-        open: true,
-        message: 'Recalculating account balances...',
-        severity: 'warning'
-      });
-      
-      const result = await window.api.transactions.recalculateBalances();
-      
-      if (result.success) {
-        setSnackbar({
-          open: true,
-          message: 'Account balances recalculated successfully',
-          severity: 'success'
-        });
-        
-        // Refresh transactions to show updated balances
-        loadTransactions();
-      } else {
-        throw new Error('Balance recalculation failed');
-      }
-    } catch (error) {
-      console.error('Error recalculating balances:', error);
-      setSnackbar({
-        open: true,
-        message: 'Failed to recalculate balances: ' + (error as Error).message,
-        severity: 'error'
-      });
-    }
-  };
-
-
   // Handle bulk delete
   const handleBulkDeleteConfirm = async () => {
     if (selectedTransactions.length > 0) {
@@ -578,14 +543,6 @@ const TransactionsPage: React.FC = () => {
             onClick={() => setExportDialogOpen(true)}
           >
             Export
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<CalculateIcon />}
-            onClick={handleRecalculateBalances}
-            color="secondary"
-          >
-            Recalculate Balances
           </Button>
           {selectedTransactions.length > 0 && (
             <Button 

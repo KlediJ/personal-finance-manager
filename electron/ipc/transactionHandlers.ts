@@ -3,10 +3,14 @@ import { DatabaseManager } from '../../src/data-storage/database/DatabaseManager
 import { DatabaseConnection } from '../../src/data-storage/database/DatabaseConnection';
 import { Transaction } from '../../src/data-storage/models/Transaction';
 import { AccountingService } from '../../src/data-storage/services/AccountingService';
+import { setupExportHandlers } from './exportHandlers';
 
 export function setupTransactionHandlers(): void {
   const transactionRepository = DatabaseManager.getInstance().getTransactionRepository();
   const accountingService = new AccountingService();
+
+  // Ensure export-related IPC handlers are registered once when transaction handlers are set up.
+  setupExportHandlers();
 
   // Get all transactions
   ipcMain.handle('transactions:getAll', async () => {

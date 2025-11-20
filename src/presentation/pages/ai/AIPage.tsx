@@ -124,10 +124,10 @@ const AIPage: React.FC = () => {
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" component="h1" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
           <SmartToyIcon color="primary" />
-          AI Assistant
+          AI Categorization
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Intelligent transaction categorization and financial data querying
+          Automatically suggest and apply categories to your transactions.
         </Typography>
       </Box>
 
@@ -193,71 +193,13 @@ const AIPage: React.FC = () => {
                 </Grid>
               </Grid>
 
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  • Rule-based pattern matching with 65+ merchant patterns
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  • All processing happens locally - your data never leaves your device
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  • Instant categorization with confidence scoring
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  • Smart payee extraction from transaction descriptions
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  • Phase 2+ features coming soon: Machine learning and API enhancement
-                </Typography>
-              </Box>
+
             </Box>
           )}
         </CardContent>
       </Card>
 
-      {/* Feature Tabs */}
-      <Card>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={tabValue} onChange={handleTabChange} aria-label="AI features">
-            <Tab 
-              icon={<CategoryIcon />} 
-              label="Transaction Categorization" 
-              {...a11yProps(0)} 
-            />
-            <Tab 
-              icon={<QuestionAnswerIcon />} 
-              label="AI Query" 
-              {...a11yProps(1)} 
-            />
-            <Tab 
-              icon={<TrendingUpIcon />} 
-              label="Financial Analysis" 
-              {...a11yProps(2)} 
-            />
-            <Tab 
-              icon={<MonitorHeartIcon />} 
-              label="AI Management" 
-              {...a11yProps(3)} 
-            />
-          </Tabs>
-        </Box>
-
-        <TabPanel value={tabValue} index={0}>
-          <TransactionCategorizer aiStatus={aiStatus} />
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={1}>
-          <AIQueryInterface aiStatus={aiStatus} />
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={2}>
-          <FinancialAnalysisPanel aiStatus={aiStatus} />
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={3}>
-          <AIManagementPanel aiStatus={aiStatus} modelStatus={modelStatus} memoryUsage={memoryUsage} />
-        </TabPanel>
-      </Card>
+      <TransactionCategorizer aiStatus={aiStatus} />
     </Box>
   );
 };
@@ -577,3 +519,5 @@ const AIManagementPanel: React.FC<{
 };
 
 export default AIPage;
+
+

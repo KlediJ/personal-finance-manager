@@ -21,7 +21,14 @@ import {
   Card,
   CardContent,
   Grid,
-  Divider
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  RadioGroup,
+  FormControlLabel,
+  Radio
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -63,8 +70,16 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
     total: 0,
     categorized: 0,
     uncategorized: 0,
-    lastRun: null as Date | null
+  lastRun: null as Date | null
   });
+
+  const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState<{
+    transaction: UncategorizedTransaction | null;
+    categoryId: number | null;
+    payeeId?: number | null;
+  }>({ transaction: null, categoryId: null, payeeId: null });
+  const [scopeChoice, setScopeChoice] = useState<'INSTANCE' | 'MERCHANT' | 'MERCHANT_AMOUNT'>('INSTANCE');
 
   useEffect(() => {
     loadUncategorizedTransactions();
@@ -185,13 +200,13 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
       // Use AI service for batch categorization
       const result = await window.api.ai.batchCategorizeTransactions(uncategorizedTransactions);
       
-      if (result.success) {
+      if (result.success && result.results) {
         console.log(`AI categorization completed successfully with ${Object.keys(result.results).length} results`);
         
         // Update transactions with AI suggestions and auto-create payees
         const updatedTransactions = await Promise.all(
           uncategorizedTransactions.map(async transaction => {
-            const aiResult = result.results[transaction.transaction_id!];
+            const aiResult = result.results![transaction.transaction_id!];
             if (aiResult) {
               // Extract category prediction
               const categoryPrediction = aiResult.categoryPredictions?.[0];
@@ -301,7 +316,7 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
     return categories[Math.floor(Math.random() * categories.length)];
   };
 
-  const handleApproveCategory = async (transactionId: number, categoryId: number, payeeId?: number) => {
+  const directApproveCategory = async (transactionId: number, categoryId: number, payeeId?: number) => {
     try {
       const transaction = uncategorizedTransactions.find(t => t.transaction_id === transactionId);
       if (!transaction) return;
@@ -341,11 +356,54 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
         prev.filter(t => t.transaction_id !== transactionId)
       );
       
-      // TODO: Send feedback to AI service for learning
-      
       loadStats();
     } catch (error) {
       console.error('Error approving category:', error);
+    }
+  };
+
+  const openScopeDialogForApproval = (transaction: UncategorizedTransaction, categoryId: number, payeeId?: number | null) => {
+    setPendingApproval({
+      transaction,
+      categoryId,
+      payeeId: payeeId ?? null
+    });
+    setScopeChoice('INSTANCE');
+    setScopeDialogOpen(true);
+  };
+
+  const handleConfirmScope = async () => {
+    if (!pendingApproval.transaction || !pendingApproval.categoryId) {
+      setScopeDialogOpen(false);
+      return;
+    }
+
+    const tx = pendingApproval.transaction;
+    const categoryId = pendingApproval.categoryId;
+    const payeeId = pendingApproval.payeeId ?? undefined;
+
+    try {
+      if (scopeChoice === 'INSTANCE') {
+        await directApproveCategory(tx.transaction_id!, categoryId, payeeId);
+      } else {
+        // Create a rule based on the transaction description (and amount for MERCHANT_AMOUNT)
+        if (window.api && window.api.ai && window.api.ai.addCategorizationRule) {
+          try {
+            await window.api.ai.addCategorizationRule({
+              transaction: tx,
+              categoryId,
+              scope: scopeChoice
+            });
+          } catch (ruleError) {
+            console.error('Error creating categorization rule:', ruleError);
+          }
+        }
+
+        await directApproveCategory(tx.transaction_id!, categoryId, payeeId);
+      }
+    } finally {
+      setScopeDialogOpen(false);
+      setPendingApproval({ transaction: null, categoryId: null, payeeId: null });
     }
   };
 
@@ -426,40 +484,9 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
   };
 
   const handleSaveManualCategory = async (transactionId: number, categoryId: number) => {
-    try {
-      const transaction = uncategorizedTransactions.find(t => t.transaction_id === transactionId);
-      if (!transaction) return;
-
-      await window.api.transactions.update(transactionId, {
-        ...transaction,
-        category_id: categoryId
-      });
-
-      // Send manual categorization to AI service for future learning (no-op in Phase 1)
-      try {
-        if (window.api && window.api.ai && window.api.ai.learnFromFeedback) {
-          const correctCategory = categories.find(c => c.category_id === categoryId);
-
-          await window.api.ai.learnFromFeedback({
-            transaction,
-            correctCategory
-          });
-        }
-      } catch (feedbackError) {
-        console.error('Error sending manual feedback to AI service:', feedbackError);
-      }
-
-      // Remove from uncategorized list
-      setUncategorizedTransactions(prev => 
-        prev.filter(t => t.transaction_id !== transactionId)
-      );
-      
-      // TODO: Send manual categorization to AI service for learning
-      
-      loadStats();
-    } catch (error) {
-      console.error('Error saving manual category:', error);
-    }
+    const transaction = uncategorizedTransactions.find(t => t.transaction_id === transactionId);
+    if (!transaction) return;
+    openScopeDialogForApproval(transaction, categoryId);
   };
 
   const getConfidenceColor = (confidence: number) => {
@@ -537,11 +564,11 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
           onClick={runAutoCategorization}
           disabled={aiStatus !== 'ready' || isProcessing || uncategorizedTransactions.length === 0}
         >
-          {isProcessing ? 'Processing...' : 'Run AI Categorization'}
+          {isProcessing ? 'Applying rules...' : 'Run Smart Categorization'}
         </Button>
         
         <Typography variant="body2" color="text.secondary">
-          {uncategorizedTransactions.length} transactions need categorization
+          {uncategorizedTransactions.length} transactions need categorization using current rules and patterns
         </Typography>
       </Box>
 
@@ -655,7 +682,7 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                           <IconButton
                             size="small"
                             color="success"
-                            onClick={() => handleApproveCategory(transaction.transaction_id!, transaction.suggestedCategory!.category_id!)}
+                            onClick={() => openScopeDialogForApproval(transaction, transaction.suggestedCategory!.category_id!)}
                             title="Approve Category Only"
                           >
                             <CheckIcon />
@@ -666,13 +693,13 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                               variant="outlined"
                               color="success"
                               onClick={() => {
-                                if (transaction.suggestedPayeeId) {
-                                  // Payee already exists, just approve both
-                                  handleApproveCategory(
-                                    transaction.transaction_id!, 
-                                    transaction.suggestedCategory!.category_id!,
-                                    transaction.suggestedPayeeId
-                                  );
+                              if (transaction.suggestedPayeeId) {
+                                   // Payee already exists, just approve both
+                                   openScopeDialogForApproval(
+                                     transaction,
+                                     transaction.suggestedCategory!.category_id!,
+                                     transaction.suggestedPayeeId
+                                   );
                                 } else {
                                   // Create new payee and approve both
                                   handleCreateAndApprovePayee(
@@ -720,6 +747,54 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
           </Typography>
         </Alert>
       )}
+
+      {/* Scope Selection Dialog */}
+      <Dialog
+        open={scopeDialogOpen}
+        onClose={() => setScopeDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Apply Categorization</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            How should this category change be applied?
+          </Typography>
+          <RadioGroup
+            value={scopeChoice}
+            onChange={(_, value) => {
+              if (value === 'INSTANCE' || value === 'MERCHANT' || value === 'MERCHANT_AMOUNT') {
+                setScopeChoice(value);
+              }
+            }}
+          >
+            <FormControlLabel
+              value="INSTANCE"
+              control={<Radio />}
+              label="This transaction only"
+            />
+            <FormControlLabel
+              value="MERCHANT"
+              control={<Radio />}
+              label="All transactions with similar description (merchant rule)"
+            />
+            <FormControlLabel
+              value="MERCHANT_AMOUNT"
+              control={<Radio />}
+              label="Transactions with this description and amount (merchant + amount rule)"
+            />
+          </RadioGroup>
+          <Typography variant="caption" color="text.secondary">
+            Rules are applied before AI suggestions and only affect matching transactions.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setScopeDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleConfirmScope}>
+            Apply
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

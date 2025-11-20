@@ -56,9 +56,6 @@ const BudgetSummary: React.FC<BudgetSummaryProps> = ({ budgetProgress, onAddBudg
   const expenseBudgetTotal = expenseBudgets.reduce((sum, item) => sum + item.budget_amount, 0);
   const expenseActualTotal = expenseBudgets.reduce((sum, item) => sum + item.spent_amount, 0);
 
-  const netBudgetTotal = incomeBudgetTotal - expenseBudgetTotal;
-  const netActualTotal = incomeActualTotal - expenseActualTotal;
-
   const expenseAsIncomePct = incomeActualTotal > 0
     ? (expenseActualTotal / incomeActualTotal) * 100
     : 0;
@@ -181,7 +178,7 @@ const BudgetSummary: React.FC<BudgetSummaryProps> = ({ budgetProgress, onAddBudg
             </Typography>
             <Grid container spacing={3}>
               {/* Income tile */}
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <Card variant="outlined">
                   <CardContent>
                     <Typography variant="subtitle1" gutterBottom>
@@ -203,7 +200,7 @@ const BudgetSummary: React.FC<BudgetSummaryProps> = ({ budgetProgress, onAddBudg
               </Grid>
 
               {/* Expense tile */}
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <Card variant="outlined">
                   <CardContent>
                     <Typography variant="subtitle1" gutterBottom>
@@ -229,39 +226,6 @@ const BudgetSummary: React.FC<BudgetSummaryProps> = ({ budgetProgress, onAddBudg
                 </Card>
               </Grid>
 
-              {/* Net tile */}
-              <Grid item xs={12} md={4}>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="subtitle1" gutterBottom>
-                      Net Position
-                    </Typography>
-                    <Typography variant="h4">
-                      {formatCurrency(netActualTotal)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Planned net: {formatCurrency(netBudgetTotal)}
-                    </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={
-                        netBudgetTotal !== 0
-                          ? Math.min(
-                              100,
-                              Math.abs((netActualTotal / netBudgetTotal) * 100)
-                            )
-                          : 0
-                      }
-                      color={getStatusColor(
-                        netBudgetTotal !== 0
-                          ? Math.abs((netActualTotal / netBudgetTotal) * 100)
-                          : 0
-                      )}
-                      sx={{ mt: 1, height: 8, borderRadius: 4 }}
-                    />
-                  </CardContent>
-                </Card>
-              </Grid>
             </Grid>
           </Paper>
 

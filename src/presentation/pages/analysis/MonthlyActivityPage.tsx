@@ -62,6 +62,7 @@ const MonthlyActivityPage: React.FC = () => {
   const [payeeDialogOpen, setPayeeDialogOpen] = useState(false);
   const [payeeDialogTx, setPayeeDialogTx] = useState<Transaction | null>(null);
   const [editedPayeeName, setEditedPayeeName] = useState('');
+  const [applyToSimilarPayees, setApplyToSimilarPayees] = useState<boolean>(false);
 
   const [categoryFilter, setCategoryFilter] = useState<string | 'all'>('all');
   const [payeeFilter, setPayeeFilter] = useState<string | 'all'>('all');
@@ -365,6 +366,7 @@ const MonthlyActivityPage: React.FC = () => {
       const currentName = (tx as any).payee_name || '';
       setPayeeDialogTx(tx);
       setEditedPayeeName(currentName);
+      setApplyToSimilarPayees(true);
       setPayeeDialogOpen(true);
     } catch (e) {
       console.error('Error updating payee:', e);
@@ -524,29 +526,81 @@ const MonthlyActivityPage: React.FC = () => {
         payee_id: payeeResult.id
       };
 
-      const updateResult = await window.api.transactions.update(
-        payeeDialogTx.transaction_id,
-        updated
-      );
+      // Decide which transactions to update
+      const originalName = ((payeeDialogTx as any).payee_name || '') as string;
+      const normalizeName = (name: string) =>
+        name
+          .toUpperCase()
+          .replace(/[#0-9]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
 
-      if (!updateResult.success) {
-        setError('Failed to update transaction payee.');
-        return;
+      const targetIds: number[] = [];
+      const normalizedOriginal = normalizeName(originalName);
+
+      targetIds.push(payeeDialogTx.transaction_id);
+
+      if (applyToSimilarPayees) {
+        transactions.forEach((t) => {
+          if (!t.transaction_id || t.transaction_id === payeeDialogTx.transaction_id) {
+            return;
+          }
+          const txPayeeName = ((t as any).payee_name || '') as string;
+          if (!txPayeeName) return;
+          if (normalizeName(txPayeeName) === normalizedOriginal) {
+            targetIds.push(t.transaction_id);
+          }
+        });
       }
 
-      setTransactions((prev) => {
-        const updatedTxs = prev.map((t: any) =>
-          t.transaction_id === payeeDialogTx.transaction_id
-            ? {
-                ...t,
-                payee_id: payeeResult.id,
-                payee_name: trimmed
-              }
-            : t
+      if (targetIds.length > 1 && window.api.transactions.bulkAssignPayee) {
+        const bulkResult = await window.api.transactions.bulkAssignPayee(
+          targetIds,
+          payeeResult.id
         );
-        recomputeSummaries(updatedTxs as unknown as Transaction[]);
-        return updatedTxs;
-      });
+        if (!bulkResult.success) {
+          setError('Failed to update similar payees.');
+          return;
+        }
+
+        setTransactions((prev) => {
+          const updatedTxs = prev.map((t: any) =>
+            t.transaction_id && targetIds.includes(t.transaction_id)
+              ? {
+                  ...t,
+                  payee_id: payeeResult.id,
+                  payee_name: trimmed
+                }
+              : t
+          );
+          recomputeSummaries(updatedTxs as unknown as Transaction[]);
+          return updatedTxs;
+        });
+      } else {
+        const updateResult = await window.api.transactions.update(
+          payeeDialogTx.transaction_id,
+          updated
+        );
+
+        if (!updateResult.success) {
+          setError('Failed to update transaction payee.');
+          return;
+        }
+
+        setTransactions((prev) => {
+          const updatedTxs = prev.map((t: any) =>
+            t.transaction_id === payeeDialogTx.transaction_id
+              ? {
+                  ...t,
+                  payee_id: payeeResult.id,
+                  payee_name: trimmed
+                }
+              : t
+          );
+          recomputeSummaries(updatedTxs as unknown as Transaction[]);
+          return updatedTxs;
+        });
+      }
 
       // Send feedback to AI service for learning
       try {
@@ -591,6 +645,7 @@ const MonthlyActivityPage: React.FC = () => {
     setPayeeDialogOpen(false);
     setPayeeDialogTx(null);
     setEditedPayeeName('');
+    setApplyToSimilarPayees(false);
   };
 
   const categoryFilterOptions = useMemo(() => {
@@ -951,6 +1006,15 @@ const MonthlyActivityPage: React.FC = () => {
             fullWidth
             value={editedPayeeName}
             onChange={(e) => setEditedPayeeName(e.target.value)}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={applyToSimilarPayees}
+                onChange={(e) => setApplyToSimilarPayees(e.target.checked)}
+              />
+            }
+            label="Apply to similar payees this month"
           />
         </DialogContent>
         <DialogActions>

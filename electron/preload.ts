@@ -181,10 +181,12 @@ contextBridge.exposeInMainWorld('api', {
     // Transaction categorization
     categorizeTransaction: (transaction: Transaction) => 
       ipcRenderer.invoke('ai:categorizeTransaction', transaction),
-    batchCategorizeTransactions: (transactions: Transaction[]) => 
+    batchCategorizeTransactions: (transactions: Transaction[]) =>
       ipcRenderer.invoke('ai:batchCategorizeTransactions', transactions),
-    learnFromFeedback: (feedback: any) => 
+    learnFromFeedback: (feedback: any) =>
       ipcRenderer.invoke('ai:learnFromFeedback', feedback),
+    addCategorizationRule: (payload: any) =>
+      ipcRenderer.invoke('ai:addCategorizationRule', payload),
     
     // Query processing
     processQuery: (query: string) => ipcRenderer.invoke('ai:processQuery', query),

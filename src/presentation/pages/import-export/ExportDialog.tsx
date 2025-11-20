@@ -33,7 +33,17 @@ interface ExportDialogProps {
 
 const ExportDialog: React.FC<ExportDialogProps> = ({ open, onClose }) => {
   // State for export options
-  const [fileType, setFileType] = useState<'csv' | 'excel'>('csv');
+  const getStoredDefaultFormat = (): 'csv' | 'excel' => {
+    try {
+      if (typeof window === 'undefined') return 'csv';
+      const stored = window.localStorage.getItem('pfm.defaultExportFormat');
+      return stored === 'excel' ? 'excel' : 'csv';
+    } catch {
+      return 'csv';
+    }
+  };
+
+  const [fileType, setFileType] = useState<'csv' | 'excel'>(() => getStoredDefaultFormat());
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [accountId, setAccountId] = useState<number | ''>('');
@@ -74,7 +84,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ open, onClose }) => {
   // Reset form when closed
   useEffect(() => {
     if (!open) {
-      setFileType('csv');
+      setFileType(getStoredDefaultFormat());
       setAccountId('');
       setTransactionType('');
     }

@@ -217,7 +217,7 @@ const BudgetPage: React.FC = () => {
           textColor="primary"
           centered
         >
-          <Tab label="Budget Progress" />
+          <Tab label="Budget Analytics" />
           <Tab label="Budget Management" />
         </Tabs>
       </Paper>

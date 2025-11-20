@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { DatabaseManager } from '../../src/data-storage/database/DatabaseManager';
+import { DatabaseConnection } from '../../src/data-storage/database/DatabaseConnection';
 import { Account } from '../../src/data-storage/models/Account';
 
 export function setupAccountHandlers(): void {
@@ -77,4 +78,71 @@ export function setupAccountHandlers(): void {
       throw error;
     }
   });
+
+  // Get extended account details (e.g., credit limit) from account_details
+  ipcMain.handle('accounts:getDetails', async (_, accountId: number) => {
+    try {
+      const db = DatabaseConnection.getInstance();
+      const stmt = db.prepare(
+        'SELECT * FROM account_details WHERE account_id = ?'
+      );
+      const row = stmt.get(accountId);
+      return row || null;
+    } catch (error) {
+      console.error(`Error getting account details for ${accountId}:`, error);
+      throw error;
+    }
+  });
+
+  // Upsert extended account details (currently focused on credit_limit)
+  ipcMain.handle(
+    'accounts:saveDetails',
+    async (
+      _,
+      details: {
+        account_id: number;
+        credit_limit?: number | null;
+        interest_rate?: number | null;
+        statement_date?: number | null;
+        due_date?: number | null;
+        minimum_payment?: number | null;
+      }
+    ) => {
+      try {
+        const db = DatabaseConnection.getInstance();
+        const stmt = db.prepare(`
+          INSERT INTO account_details (
+            account_id,
+            credit_limit,
+            interest_rate,
+            statement_date,
+            due_date,
+            minimum_payment
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(account_id) DO UPDATE SET
+            credit_limit = COALESCE(excluded.credit_limit, account_details.credit_limit),
+            interest_rate = COALESCE(excluded.interest_rate, account_details.interest_rate),
+            statement_date = COALESCE(excluded.statement_date, account_details.statement_date),
+            due_date = COALESCE(excluded.due_date, account_details.due_date),
+            minimum_payment = COALESCE(excluded.minimum_payment, account_details.minimum_payment),
+            updated_at = CURRENT_TIMESTAMP
+        `);
+
+        stmt.run(
+          details.account_id,
+          details.credit_limit ?? null,
+          details.interest_rate ?? null,
+          details.statement_date ?? null,
+          details.due_date ?? null,
+          details.minimum_payment ?? null
+        );
+
+        return { success: true };
+      } catch (error) {
+        console.error('Error saving account details:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    }
+  );
 }

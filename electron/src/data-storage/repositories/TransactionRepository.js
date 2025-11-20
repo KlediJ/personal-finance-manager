@@ -138,6 +138,32 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
         return this.runQuery(query, [status]);
     }
     /**
+     * Get all transactions for a given month (YYYY-MM) with related info,
+     * optionally filtered by account.
+     */
+    getByMonth(month, accountId) {
+        const startDate = `${month}-01`;
+        // SQLite strftime trick to get first day of next month
+        const endDateExpr = `date(?, '+1 month')`;
+        let query = `
+      SELECT t.*, 
+             p.name as payee_name, 
+             c.name as category_name
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      WHERE t.date >= ? 
+        AND t.date < ${endDateExpr}
+    `;
+        const params = [startDate, startDate];
+        if (typeof accountId === 'number') {
+            query += ` AND t.account_id = ?`;
+            params.push(accountId);
+        }
+        query += ` ORDER BY t.date ASC, t.transaction_id ASC`;
+        return this.runQuery(query, params);
+    }
+    /**
      * Get income/expense summary by month
      */
     getMonthlySummary(year) {

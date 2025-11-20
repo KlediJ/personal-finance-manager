@@ -9,7 +9,9 @@ import {
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CategoryIcon from '@mui/icons-material/Category';
+import PersonIcon from '@mui/icons-material/Person';
 import CategoriesPage from '../categories/CategoriesPage';
+import PayeesPage from '../payees/PayeesPage';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -75,6 +77,7 @@ const SettingsPage: React.FC = () => {
         >
           <Tab icon={<SettingsIcon />} label="General" />
           <Tab icon={<CategoryIcon />} label="Categories" />
+          <Tab icon={<PersonIcon />} label="Payees" />
         </Tabs>
         
         <TabPanel value={tabValue} index={0}>
@@ -83,6 +86,10 @@ const SettingsPage: React.FC = () => {
         
         <TabPanel value={tabValue} index={1}>
           <CategoriesPage inSettingsPage={true} />
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={2}>
+          <PayeesPage inSettingsPage={true} />
         </TabPanel>
       </Paper>
     </Container>

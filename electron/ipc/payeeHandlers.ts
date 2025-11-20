@@ -106,6 +106,24 @@ export function setupPayeeHandlers(): void {
     }
   });
 
+  // Bulk delete payees by IDs
+  ipcMain.handle('payees:bulkDelete', async (_, ids: number[]) => {
+    try {
+      let deletedCount = 0;
+      for (const id of ids) {
+        if (!id) continue;
+        const success = payeeRepository.delete(id);
+        if (success) {
+          deletedCount++;
+        }
+      }
+      return { success: true, deletedCount };
+    } catch (error) {
+      console.error('Error bulk deleting payees:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
   // Get enhanced payees (with transaction stats)
   ipcMain.handle('payees:getEnhanced', async () => {
     try {

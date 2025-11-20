@@ -175,7 +175,9 @@ const CategoriesPage: React.FC<CategoriesPageProps> = ({ inSettingsPage = false 
 
   // Format category type for display
   const formatCategoryType = (type: CategoryType): string => {
-    return type === CategoryType.INCOME ? 'Income' : 'Expense';
+    if (type === CategoryType.INCOME) return 'Income';
+    if (type === CategoryType.TRANSFER) return 'Transfer';
+    return 'Expense';
   };
 
   return (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Button,
@@ -33,7 +33,8 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import CalculateIcon from '@mui/icons-material/Calculate';
-import { Transaction, TransactionType, TransactionStatus } from '../../../data-storage/models/Transaction';
+import { useLocation } from 'react-router-dom';
+import { Transaction, TransactionType } from '../../../data-storage/models/Transaction';
 import { Account } from '../../../data-storage/models/Account';
 import { Category } from '../../../data-storage/models/Category';
 import TransactionFormDialog from './TransactionFormDialog';
@@ -68,9 +69,28 @@ const TransactionsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<number | ''>('');
   const [selectedType, setSelectedType] = useState<string | ''>('');
-  const [selectedStatus, setSelectedStatus] = useState<string | ''>('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | ''>('');
+  const [amountMin, setAmountMin] = useState<string>('');
+  const [amountMax, setAmountMax] = useState<string>('');
+
+  // State for drill-down from dashboard (category/payee)
+  const location = useLocation();
+  const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null);
+  const [drilldownPayee, setDrilldownPayee] = useState<string | null>(null);
+
+  // State for client-side sorting
+  type SortKey =
+    | 'date'
+    | 'description'
+    | 'payee'
+    | 'account'
+    | 'category'
+    | 'type'
+    | 'amount';
+  const [sortBy, setSortBy] = useState<SortKey | null>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   
   // State for notifications
   const [snackbar, setSnackbar] = useState<{ open: boolean, message: string, severity: 'success' | 'error' | 'warning' }>({
@@ -119,9 +139,6 @@ const TransactionsPage: React.FC = () => {
       } else if (selectedType) {
         // Filter by transaction type
         data = await window.api.transactions.getByType(selectedType);
-      } else if (selectedStatus) {
-        // Filter by status
-        data = await window.api.transactions.getByStatus(selectedStatus);
       } else if (searchTerm) {
         // Search by description
         data = await window.api.transactions.searchByDescription(searchTerm);
@@ -200,12 +217,22 @@ const TransactionsPage: React.FC = () => {
     loadTransactions();
   }, []);
 
+  // Watch URL query params for dashboard drill-down (category/payee)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const category = params.get('category');
+    const payee = params.get('payee');
+
+    setDrilldownCategory(category);
+    setDrilldownPayee(payee);
+  }, [location.search]);
+
   // Reload when filters change
   useEffect(() => {
     if (!loading) {
       loadTransactions();
     }
-  }, [selectedAccount, selectedType, selectedStatus]);
+  }, [selectedAccount, selectedType]);
 
   // Handle search button click
   const handleSearch = () => {
@@ -217,9 +244,11 @@ const TransactionsPage: React.FC = () => {
     setSearchTerm('');
     setSelectedAccount('');
     setSelectedType('');
-    setSelectedStatus('');
     setStartDate(null);
     setEndDate(null);
+    setSelectedCategoryFilter('');
+    setAmountMin('');
+    setAmountMax('');
     loadTransactions();
   };
 
@@ -361,13 +390,16 @@ const TransactionsPage: React.FC = () => {
     });
   };
 
-  // Toggle select all transactions
+  // Toggle select all transactions (current view)
   const handleToggleSelectAll = () => {
-    if (selectedTransactions.length === transactions.length) {
+    if (selectedTransactions.length === displayedTransactions.length) {
       setSelectedTransactions([]);
     } else {
-      // Select all visible transactions
-      setSelectedTransactions(transactions.map(t => t.transaction_id || 0).filter(id => id !== 0));
+      setSelectedTransactions(
+        displayedTransactions
+          .map((t) => t.transaction_id || 0)
+          .filter((id) => id !== 0)
+      );
     }
   };
 
@@ -426,20 +458,112 @@ const TransactionsPage: React.FC = () => {
     return colorMap[type] || 'default';
   };
 
-  // Get transaction status label
-  const getTransactionStatusLabel = (status: TransactionStatus) => {
-    const statusMap: Record<string, string> = {
-      [TransactionStatus.PENDING]: 'Pending',
-      [TransactionStatus.CLEARED]: 'Cleared',
-      [TransactionStatus.RECONCILED]: 'Reconciled'
-    };
-    return statusMap[status] || status;
+  const displayedTransactions = useMemo(() => {
+    let data = transactions;
+
+    if (drilldownCategory) {
+      data = data.filter(
+        (t: any) =>
+          (t.category_name || getCategoryName(t.category_id ?? null)) ===
+          drilldownCategory
+      );
+    }
+
+    if (drilldownPayee) {
+      data = data.filter(
+        (t: any) => (t.payee_name || '').trim() === drilldownPayee.trim()
+      );
+    }
+
+    if (selectedCategoryFilter) {
+      data = data.filter(
+        (t: any) => (t.category_id ?? null) === selectedCategoryFilter
+      );
+    }
+
+    const min =
+      amountMin.trim() !== '' ? parseFloat(amountMin.trim()) : null;
+    const max =
+      amountMax.trim() !== '' ? parseFloat(amountMax.trim()) : null;
+
+    if (min !== null && !Number.isNaN(min)) {
+      data = data.filter((t: any) => typeof t.amount === 'number' && t.amount >= min);
+    }
+
+    if (max !== null && !Number.isNaN(max)) {
+      data = data.filter((t: any) => typeof t.amount === 'number' && t.amount <= max);
+    }
+
+    if (!sortBy) {
+      return data;
+    }
+
+    const sorted = [...data].sort((a: any, b: any) => {
+      const dir = sortDirection === 'asc' ? 1 : -1;
+
+      const getValue = (t: any) => {
+        switch (sortBy) {
+          case 'date':
+            return t.date || '';
+          case 'description':
+            return (t.description || '').toLowerCase();
+          case 'payee':
+            return (t.payee_name || '').toLowerCase();
+          case 'account':
+            return getAccountName(t.account_id).toLowerCase();
+          case 'category':
+            return (t.category_name ||
+              getCategoryName(t.category_id ?? null)).toLowerCase();
+          case 'type':
+            return getTransactionTypeLabel(t.transaction_type);
+          case 'amount':
+            return t.amount || 0;
+          default:
+            return '';
+        }
+      };
+
+      const va = getValue(a);
+      const vb = getValue(b);
+
+      if (sortBy === 'amount') {
+        return (va - vb) * dir;
+      }
+
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+
+    return sorted;
+  }, [
+    transactions,
+    drilldownCategory,
+    drilldownPayee,
+    selectedCategoryFilter,
+    amountMin,
+    amountMax,
+    sortBy,
+    sortDirection,
+    accounts,
+    categories
+  ]);
+
+  const handleSort = (key: SortKey) => {
+    setSortBy((prev) => {
+      if (prev === key) {
+        setSortDirection((prevDir) => (prevDir === 'asc' ? 'desc' : 'asc'));
+        return prev;
+      }
+      setSortDirection('asc');
+      return key;
+    });
   };
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5">Transactions</Typography>
+        <Typography variant="h5">Ledger</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
             variant="outlined"
@@ -594,25 +718,54 @@ const TransactionsPage: React.FC = () => {
             />
           </Grid>
           
-          {/* Filter by status */}
+          {/* Filter by category */}
           <Grid item xs={12} sm={4}>
             <FormControl fullWidth size="small">
-              <InputLabel>Status</InputLabel>
+              <InputLabel>Category</InputLabel>
               <Select
-                value={selectedStatus}
-                label="Status"
-                onChange={(e) => setSelectedStatus(e.target.value)}
+                value={selectedCategoryFilter}
+                label="Category"
+                onChange={(e) =>
+                  setSelectedCategoryFilter(
+                    e.target.value === '' ? '' : (e.target.value as number)
+                  )
+                }
               >
                 <MenuItem value="">
-                  <em>All Statuses</em>
+                  <em>All Categories</em>
                 </MenuItem>
-                {Object.values(TransactionStatus).map((status) => (
-                  <MenuItem key={status} value={status}>
-                    {getTransactionStatusLabel(status as TransactionStatus)}
+                {categories.map((category) => (
+                  <MenuItem
+                    key={category.category_id}
+                    value={category.category_id}
+                  >
+                    {category.name}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
+          </Grid>
+
+          {/* Filter by amount range */}
+          <Grid item xs={12} sm={4}>
+            <TextField
+              label="Min Amount"
+              type="number"
+              fullWidth
+              size="small"
+              value={amountMin}
+              onChange={(e) => setAmountMin(e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <TextField
+              label="Max Amount"
+              type="number"
+              fullWidth
+              size="small"
+              value={amountMax}
+              onChange={(e) => setAmountMax(e.target.value)}
+            />
           </Grid>
           
           {/* Apply date range filter button */}
@@ -641,24 +794,66 @@ const TransactionsPage: React.FC = () => {
               <TableRow>
                 <TableCell padding="checkbox">
                   <Checkbox
-                    indeterminate={selectedTransactions.length > 0 && selectedTransactions.length < transactions.length}
-                    checked={transactions.length > 0 && selectedTransactions.length === transactions.length}
+                    indeterminate={
+                      selectedTransactions.length > 0 &&
+                      selectedTransactions.length < displayedTransactions.length
+                    }
+                    checked={
+                      displayedTransactions.length > 0 &&
+                      selectedTransactions.length ===
+                        displayedTransactions.length
+                    }
                     onChange={handleToggleSelectAll}
                   />
                 </TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell>Payee</TableCell>
-                <TableCell>Account</TableCell>
-                <TableCell>Category</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell align="right">Amount</TableCell>
-                <TableCell>Status</TableCell>
+                <TableCell
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => handleSort('date')}
+                >
+                  Date
+                </TableCell>
+                <TableCell
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => handleSort('description')}
+                >
+                  Description
+                </TableCell>
+                <TableCell
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => handleSort('payee')}
+                >
+                  Payee
+                </TableCell>
+                <TableCell
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => handleSort('account')}
+                >
+                  Account
+                </TableCell>
+                <TableCell
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => handleSort('category')}
+                >
+                  Category
+                </TableCell>
+                <TableCell
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => handleSort('type')}
+                >
+                  Type
+                </TableCell>
+                <TableCell
+                  align="right"
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => handleSort('amount')}
+                >
+                  Amount
+                </TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {transactions.length === 0 ? (
+              {displayedTransactions.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} align="center">
                     <Typography sx={{ py: 2 }}>
@@ -667,7 +862,7 @@ const TransactionsPage: React.FC = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                transactions.map((transaction) => (
+                displayedTransactions.map((transaction) => (
                   <TableRow key={transaction.transaction_id}>
                     <TableCell padding="checkbox">
                       <Checkbox
@@ -695,13 +890,6 @@ const TransactionsPage: React.FC = () => {
                           : 'inherit' 
                     }}>
                       {formatAmount(transaction.amount)}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={getTransactionStatusLabel(transaction.status)}
-                        variant="outlined"
-                        size="small"
-                      />
                     </TableCell>
                     <TableCell align="right">
                       <IconButton 

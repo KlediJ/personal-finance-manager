@@ -214,6 +214,30 @@ const AccountFormDialog: React.FC<AccountFormDialogProps> = ({
               label="Active Account"
             />
           </Grid>
+
+          {account && (
+            <Grid item xs={12}>
+              <TextField
+                name="current_balance"
+                label="Current Balance (manual adjustment)"
+                type="number"
+                fullWidth
+                value={formValues.current_balance}
+                onChange={handleChange}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      {formValues.currency === 'USD' ? '$' : formValues.currency}
+                    </InputAdornment>
+                  ),
+                }}
+                helperText={
+                  'Use this sparingly to correct a mistaken starting balance. ' +
+                  'It overrides the balance derived from transactions and may create a one-time discrepancy.'
+                }
+              />
+            </Grid>
+          )}
         </Grid>
       </DialogContent>
       <DialogActions>

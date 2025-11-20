@@ -221,9 +221,9 @@ export class PayeeRepository extends BaseRepository<Payee> {
     const query = `SELECT * FROM payees WHERE LOWER(name) = LOWER(?) LIMIT 1`;
     const statement = this.db.prepare(query);
     const row = statement.get(name);
-    
+
     if (!row) return null;
-    
+
     const payee = this.mapToEntity(row);
     payee.details = this.getPayeeDetails(payee.payee_id!);
     return payee;
@@ -231,13 +231,54 @@ export class PayeeRepository extends BaseRepository<Payee> {
 
   // Create payee only if it doesn't exist (case-insensitive)
   public createIfNotExists(payee: Payee): { id: number; created: boolean } {
-    const existing = this.findByName(payee.name);
-    
-    if (existing) {
-      return { id: existing.payee_id!, created: false };
+    const existingExact = this.findByName(payee.name);
+
+    if (existingExact) {
+      return { id: existingExact.payee_id!, created: false };
     }
-    
+
+    const normalizedTarget = this.normalizePayeeName(payee.name);
+    const allPayees = this.getAll();
+    const existingNormalized = allPayees.find(p => 
+      this.normalizePayeeName(p.name) === normalizedTarget
+    );
+
+    if (existingNormalized && existingNormalized.payee_id) {
+      return { id: existingNormalized.payee_id, created: false };
+    }
+
     const id = this.create(payee);
     return { id, created: true };
+  }
+
+  // Normalize payee name for duplicate detection
+  private normalizePayeeName(name: string): string {
+    const basic = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Split into tokens so we can drop obvious bank/processor codes
+    const tokens = basic.split(' ');
+
+    const filtered = tokens.filter((token, index) => {
+      // Drop leading 6-digit date-like codes (e.g. "250919 Applecom Bill ...")
+      if (index === 0 && /^\d{6}$/.test(token)) {
+        return false;
+      }
+
+      // Drop trailing S-codes like "S305242718808044" that vary per transaction
+      if (/^s\d{6,}$/.test(token)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    const withoutCodes = filtered.join(' ').trim();
+
+    // Still remove any trailing pure numeric token if present
+    return withoutCodes.replace(/\s+\d+$/, '');
   }
 }

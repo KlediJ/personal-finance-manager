@@ -81,8 +81,10 @@ export class PayeeExtractor {
     
     // Remove common bank codes and suffixes
     const removePatterns = [
+      /^\d{6}\s+/,                // Leading posting date codes like "250919"
       /\s+CARD\s+\d+.*$/i,
       /\s+\d{4,}.*$/,  // Remove long numbers at end
+      /\s+S\d{6,}.*$/i, // Remove trailing S-codes like "S305242718808044"
       /\s+[A-Z]{2}\s+\d{5}.*$/,  // Remove state/zip
       /\s+PURCHASE.*$/i,
       /\s+PAYMENT.*$/i,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Grid,
@@ -15,7 +15,6 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import { useNavigate } from 'react-router-dom';
-import MonthlyChart from './charts/MonthlyChart';
 import CategoryBreakdown from './charts/CategoryBreakdown';
 import PayeeSummary from './PayeeSummary';
 import CategorySummary from './CategorySummary';
@@ -33,13 +32,17 @@ const DashboardPage: React.FC = () => {
   
   // Transaction summary data
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
-  const [monthlyData, setMonthlyData] = useState<any[]>([]);
+  const [rangeTransactions, setRangeTransactions] = useState<any[]>([]);
   const [categorySummary, setCategorySummary] = useState<any[]>([]);
   const [payeeSummary, setPayeeSummary] = useState<any[]>([]);
   
   // Monthly totals
   const [currentMonthIncome, setCurrentMonthIncome] = useState<number>(0);
   const [currentMonthExpenses, setCurrentMonthExpenses] = useState<number>(0);
+  const [currentMonthCategorizedCount, setCurrentMonthCategorizedCount] = useState<number>(0);
+  const [currentMonthUncategorizedCount, setCurrentMonthUncategorizedCount] = useState<number>(0);
+
+  const [selectedPivotCategory, setSelectedPivotCategory] = useState<string | null>(null);
 
   // Date handling helpers
   const getCurrentMonthStart = () => {
@@ -81,9 +84,11 @@ const DashboardPage: React.FC = () => {
       );
       console.log('Dashboard month transactions:', monthTransactions);
       
-      // Calculate monthly totals
+      // Calculate monthly totals and categorization progress
       let incomeTotal = 0;
       let expenseTotal = 0;
+      let categorizedCount = 0;
+      let uncategorizedCount = 0;
       
       monthTransactions.forEach((t: any) => {
         if (t.transaction_type === 'income') {
@@ -91,12 +96,20 @@ const DashboardPage: React.FC = () => {
         } else if (t.transaction_type === 'expense') {
           expenseTotal += t.amount; // Note: expense amounts are negative
         }
+
+        if (t.category_id) {
+          categorizedCount += 1;
+        } else {
+          uncategorizedCount += 1;
+        }
       });
       
       setCurrentMonthIncome(incomeTotal);
       setCurrentMonthExpenses(expenseTotal);
+      setCurrentMonthCategorizedCount(categorizedCount);
+      setCurrentMonthUncategorizedCount(uncategorizedCount);
       
-      // Get monthly data for chart (last 6 months)
+      // Get transactions for category/payee analysis (last 6 months)
       const today = new Date();
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(today.getMonth() - 5); // 6 months including current
@@ -104,18 +117,15 @@ const DashboardPage: React.FC = () => {
       const startDate = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, '0')}-01`;
       const endDate = getCurrentMonthEnd();
       
-      const rangeTransactions = await window.api.transactions.getByDateRange(startDate, endDate);
-      
-      // Process monthly data
-      const monthlySummary = processMonthlyData(rangeTransactions);
-      setMonthlyData(monthlySummary);
+      const rangeTx = await window.api.transactions.getByDateRange(startDate, endDate);
+      setRangeTransactions(rangeTx);
       
       // Process category breakdown
-      const categoryData = processCategoryData(rangeTransactions);
+      const categoryData = processCategoryData(rangeTx);
       setCategorySummary(categoryData);
       
       // Process payee breakdown
-      const payeeData = processPayeeData(rangeTransactions);
+      const payeeData = processPayeeData(rangeTx);
       console.log('Dashboard payee data:', payeeData);
       setPayeeSummary(payeeData);
       
@@ -125,57 +135,6 @@ const DashboardPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Process transaction data into monthly summaries
-  const processMonthlyData = (transactions: any[]) => {
-    const monthlyMap = new Map();
-    
-    // Initialize monthly data for the last 6 months
-    const today = new Date();
-    for (let i = 0; i < 6; i++) {
-      const d = new Date();
-      d.setMonth(today.getMonth() - i);
-      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      
-      // Get month name (e.g., "Jan 2023")
-      const monthName = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      
-      monthlyMap.set(monthKey, {
-        month: monthName,
-        income: 0,
-        expenses: 0,
-        net: 0
-      });
-    }
-    
-    // Aggregate transaction data by month
-    transactions.forEach((t: any) => {
-      const date = new Date(t.date);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      
-      if (monthlyMap.has(monthKey)) {
-        const monthData = monthlyMap.get(monthKey);
-        
-        if (t.transaction_type === 'income') {
-          monthData.income += t.amount;
-        } else if (t.transaction_type === 'expense') {
-          monthData.expenses += t.amount; // Note: expense amounts are negative
-        }
-        
-        monthData.net = monthData.income + monthData.expenses;
-        monthlyMap.set(monthKey, monthData);
-      }
-    });
-    
-    // Convert map to array and sort by month (oldest to newest)
-    return Array.from(monthlyMap.values())
-      .sort((a, b) => {
-        // Extract year and month for comparison
-        const aDate = new Date(a.month);
-        const bDate = new Date(b.month);
-        return aDate.getTime() - bDate.getTime();
-      });
   };
 
   // Process transaction data into category breakdown
@@ -245,6 +204,80 @@ const DashboardPage: React.FC = () => {
 
   // Calculate net change (income + expenses)
   const netChange = currentMonthIncome + currentMonthExpenses;
+  const totalMonthTransactions =
+    currentMonthCategorizedCount + currentMonthUncategorizedCount;
+  const categorizedPercent =
+    totalMonthTransactions > 0
+      ? Math.round(
+          (currentMonthCategorizedCount / totalMonthTransactions) * 100
+        )
+      : 0;
+
+  const pivotData = useMemo(() => {
+    if (!rangeTransactions || rangeTransactions.length === 0) {
+      return {
+        categoryName: null as string | null,
+        total: 0,
+        merchants: [] as Array<{ name: string; total: number; count: number }>
+      };
+    }
+
+    const expenses = rangeTransactions.filter(
+      (t: any) => t.transaction_type === 'expense'
+    );
+
+    const byCategory = new Map<
+      string,
+      { total: number; merchants: Map<string, { total: number; count: number }> }
+    >();
+
+    expenses.forEach((t: any) => {
+      const categoryName = t.category_name || 'Uncategorized';
+      const payeeName = t.payee_name || 'No payee';
+
+      if (!byCategory.has(categoryName)) {
+        byCategory.set(categoryName, {
+          total: 0,
+          merchants: new Map()
+        });
+      }
+
+      const entry = byCategory.get(categoryName)!;
+      entry.total += t.amount;
+
+      if (!entry.merchants.has(payeeName)) {
+        entry.merchants.set(payeeName, { total: 0, count: 0 });
+      }
+      const merchantEntry = entry.merchants.get(payeeName)!;
+      merchantEntry.total += t.amount;
+      merchantEntry.count += 1;
+    });
+
+    const effectiveCategory =
+      selectedPivotCategory && byCategory.has(selectedPivotCategory)
+        ? selectedPivotCategory
+        : null;
+
+    if (!effectiveCategory) {
+      return {
+        categoryName: null as string | null,
+        total: 0,
+        merchants: [] as Array<{ name: string; total: number; count: number }>
+      };
+    }
+
+    const catEntry = byCategory.get(effectiveCategory)!;
+    const merchantsArray = Array.from(catEntry.merchants.entries())
+      .map(([name, v]) => ({ name, total: v.total, count: v.count }))
+      .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
+      .slice(0, 8);
+
+    return {
+      categoryName: effectiveCategory,
+      total: catEntry.total,
+      merchants: merchantsArray
+    };
+  }, [rangeTransactions, selectedPivotCategory]);
 
   return (
     <Box>
@@ -287,7 +320,7 @@ const DashboardPage: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {/* Summary Cards Row */}
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
               <Typography color="textSecondary" gutterBottom variant="subtitle2">
                 Total Balance
@@ -314,7 +347,7 @@ const DashboardPage: React.FC = () => {
               </Box>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
               <Typography color="textSecondary" gutterBottom variant="subtitle2">
                 Income This Month
@@ -341,7 +374,7 @@ const DashboardPage: React.FC = () => {
               </Box>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
               <Typography color="textSecondary" gutterBottom variant="subtitle2">
                 Expenses This Month
@@ -386,26 +419,126 @@ const DashboardPage: React.FC = () => {
               </Box>
             </Paper>
           </Grid>
-
-          {/* Charts Row */}
-          <Grid item xs={12} md={8}>
-            <Paper sx={{ p: 2, height: '100%' }}>
-              <Typography variant="h6" gutterBottom>
-                Monthly Income & Expenses
+          <Grid item xs={12} md={3}>
+            <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
+              <Typography color="textSecondary" gutterBottom variant="subtitle2">
+                Categorization (This Month)
               </Typography>
-              <Box sx={{ height: 300 }}>
-                <MonthlyChart data={monthlyData} />
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
+                <Box>
+                  <Typography variant="h4" component="div">
+                    {categorizedPercent}%
+                  </Typography>
+                  <Typography color="textSecondary" sx={{ mt: 1 }}>
+                    {currentMonthCategorizedCount} categorized
+                  </Typography>
+                  <Typography color="textSecondary">
+                    {currentMonthUncategorizedCount} uncategorized
+                  </Typography>
+                </Box>
               </Box>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={4}>
+
+          {/* Category breakdown and pivot */}
+          <Grid item xs={12} md={6}>
             <Paper sx={{ p: 2, height: '100%' }}>
               <Typography variant="h6" gutterBottom>
                 Spending by Category
               </Typography>
               <Box sx={{ height: 300 }}>
-                <CategoryBreakdown data={categorySummary} />
+                <CategoryBreakdown
+                  data={categorySummary}
+                  onCategoryClick={(name) =>
+                    setSelectedPivotCategory((prev) =>
+                      prev === name ? null : name
+                    )
+                  }
+                />
               </Box>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2, height: '100%' }}>
+              <Typography variant="h6" gutterBottom>
+                Category × Merchant Pivot
+              </Typography>
+              {pivotData.categoryName ? (
+                <>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    {pivotData.categoryName}
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                    Total spend:{' '}
+                    {Math.abs(pivotData.total).toLocaleString('en-US', {
+                      style: 'currency',
+                      currency: 'USD'
+                    })}
+                  </Typography>
+                  {pivotData.merchants.length === 0 ? (
+                    <Typography
+                      variant="body2"
+                      color="textSecondary"
+                      sx={{ mt: 1 }}
+                    >
+                      No merchants found for this category.
+                    </Typography>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                      {pivotData.merchants.map((m) => (
+                        <Box
+                          key={m.name}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            '&:hover': {
+                              backgroundColor: theme.palette.action.hover
+                            },
+                            px: 1,
+                            py: 0.5,
+                            borderRadius: 1
+                          }}
+                          onClick={() =>
+                            navigate(
+                              `/transactions?category=${encodeURIComponent(
+                                pivotData.categoryName || ''
+                              )}&payee=${encodeURIComponent(m.name)}`
+                            )
+                          }
+                        >
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                              {m.name}
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary">
+                              {m.count} transaction
+                              {m.count !== 1 ? 's' : ''}
+                            </Typography>
+                          </Box>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 'medium',
+                              color: theme.palette.error.main
+                            }}
+                          >
+                            {Math.abs(m.total).toLocaleString('en-US', {
+                              style: 'currency',
+                              currency: 'USD'
+                            })}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                </>
+              ) : (
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                  Click a category in the chart to see its top merchants.
+                </Typography>
+              )}
             </Paper>
           </Grid>
 

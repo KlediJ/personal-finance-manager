@@ -34,6 +34,7 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import PaymentIcon from '@mui/icons-material/Payment';
 import { LoanDetails, LoanType, PaymentFrequency } from '../../../data-storage/models/LoanDetails';
 import { Account } from '../../../data-storage/models/Account';
+import LoanFormDialog from './LoanFormDialog';
 
 interface LoansPageProps {
   inSettingsPage?: boolean;
@@ -50,6 +51,8 @@ const LoansPage: React.FC<LoansPageProps> = ({ inSettingsPage = false }) => {
   });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [loanToDelete, setLoanToDelete] = useState<LoanDetails | null>(null);
+  const [loanFormOpen, setLoanFormOpen] = useState(false);
+  const [editingLoan, setEditingLoan] = useState<LoanDetails | null>(null);
 
   // Load loans and related data
   const loadLoans = async () => {
@@ -165,20 +168,58 @@ const LoansPage: React.FC<LoansPageProps> = ({ inSettingsPage = false }) => {
 
   // Handle add loan
   const handleAddLoan = () => {
-    // TODO: Open loan form dialog
-    console.log('Add loan clicked');
+    setEditingLoan(null);
+    setLoanFormOpen(true);
   };
 
   // Handle edit loan
   const handleEditLoan = (loan: LoanDetails) => {
-    // TODO: Open edit dialog
-    console.log('Edit loan:', loan.loan_id);
+    setEditingLoan(loan);
+    setLoanFormOpen(true);
   };
 
   // Handle delete loan
   const handleDeleteLoan = (loan: LoanDetails) => {
     setLoanToDelete(loan);
     setDeleteDialogOpen(true);
+  };
+
+  // Save loan (create or update)
+  const handleSaveLoan = async (loan: LoanDetails) => {
+    try {
+      if (loan.loan_id) {
+        const result = await window.api.loans.update(loan.loan_id, loan);
+        if (!result.success) {
+          throw new Error('Update failed');
+        }
+        setSnackbar({
+          open: true,
+          message: 'Loan updated successfully',
+          severity: 'success'
+        });
+      } else {
+        const result = await window.api.loans.create(loan);
+        if (!result.success) {
+          throw new Error('Creation failed');
+        }
+        setSnackbar({
+          open: true,
+          message: 'Loan created successfully',
+          severity: 'success'
+        });
+      }
+
+      await loadLoans();
+      setLoanFormOpen(false);
+      setEditingLoan(null);
+    } catch (error) {
+      console.error('Error saving loan:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to save loan',
+        severity: 'error'
+      });
+    }
   };
 
   return (
@@ -414,6 +455,18 @@ const LoansPage: React.FC<LoansPageProps> = ({ inSettingsPage = false }) => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Loan Form Dialog */}
+      <LoanFormDialog
+        open={loanFormOpen}
+        loan={editingLoan}
+        accounts={accounts}
+        onClose={() => {
+          setLoanFormOpen(false);
+          setEditingLoan(null);
+        }}
+        onSave={handleSaveLoan}
+      />
 
       {/* Snackbar for notifications */}
       <Snackbar

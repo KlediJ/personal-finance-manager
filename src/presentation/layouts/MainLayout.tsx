@@ -23,10 +23,9 @@ import PersonIcon from '@mui/icons-material/Person';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-import SubscriptionsIcon from '@mui/icons-material/Subscriptions';
 import HomeIcon from '@mui/icons-material/Home';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
+import TimelineIcon from '@mui/icons-material/Timeline';
 import { useNavigate, useLocation } from 'react-router-dom';
 // Import the logo properly
 import logoImage from '../../assets/images/logo.png';
@@ -47,15 +46,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   };
 
   const menuItems = [
+    // Core workspace
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Accounts', icon: <AccountBalanceIcon />, path: '/accounts' },
-    { text: 'Transactions', icon: <ReceiptIcon />, path: '/transactions' },
-    { text: 'Payees', icon: <PersonIcon />, path: '/payees' },
-    { text: 'Bills', icon: <ReceiptLongIcon />, path: '/bills' },
-    { text: 'Subscriptions', icon: <SubscriptionsIcon />, path: '/subscriptions' },
+    { text: 'Ledger', icon: <ReceiptIcon />, path: '/transactions' },
+    { text: 'Monthly Activity', icon: <TimelineIcon />, path: '/activity' },
+    { text: 'Budget', icon: <MonetizationOnIcon />, path: '/budget' },
+    // Supporting tools & configuration
     { text: 'Loans', icon: <HomeIcon />, path: '/loans' },
     { text: 'Credit Cards', icon: <CreditCardIcon />, path: '/credit-cards' },
-    { text: 'Budget', icon: <MonetizationOnIcon />, path: '/budget' },
     { text: 'AI Assistant', icon: <SmartToyIcon />, path: '/ai' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];

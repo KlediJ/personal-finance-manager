@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { Transaction, TransactionType, TransactionStatus } from '../../data-storage/models/Transaction';
+import { Transaction, TransactionType } from '../../data-storage/models/Transaction';
 import { Account } from '../../data-storage/models/Account';
 import { PayeeExtractor } from '../ai/PayeeExtractor';
 
@@ -271,22 +271,8 @@ export class CsvProcessor {
         }
       }
       
-      // Status
-      if (mappings.status && row[mappings.status] !== undefined) {
-        const rawStatus = String(row[mappings.status]).toLowerCase();
-        
-        if (['pending', 'p', 'uncleared'].includes(rawStatus)) {
-          transaction.status = TransactionStatus.PENDING;
-        } else if (['cleared', 'c', 'processed'].includes(rawStatus)) {
-          transaction.status = TransactionStatus.CLEARED;
-        } else if (['reconciled', 'r', 'verified'].includes(rawStatus)) {
-          transaction.status = TransactionStatus.RECONCILED;
-        } else {
-          transaction.status = TransactionStatus.PENDING; // Default
-        }
-      } else {
-        transaction.status = TransactionStatus.PENDING; // Default
-      }
+      // Status: always default to cleared for imported transactions
+      transaction.status = 'cleared' as any;
       
       // Add processed row or errors
       if (hasErrors) {

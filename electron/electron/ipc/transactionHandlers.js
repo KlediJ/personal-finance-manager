@@ -5,9 +5,12 @@ const electron_1 = require("electron");
 const DatabaseManager_1 = require("../../src/data-storage/database/DatabaseManager");
 const DatabaseConnection_1 = require("../../src/data-storage/database/DatabaseConnection");
 const AccountingService_1 = require("../../src/data-storage/services/AccountingService");
+const exportHandlers_1 = require("./exportHandlers");
 function setupTransactionHandlers() {
     const transactionRepository = DatabaseManager_1.DatabaseManager.getInstance().getTransactionRepository();
     const accountingService = new AccountingService_1.AccountingService();
+    // Ensure export-related IPC handlers are registered once when transaction handlers are set up.
+    (0, exportHandlers_1.setupExportHandlers)();
     // Get all transactions
     electron_1.ipcMain.handle('transactions:getAll', async () => {
         try {

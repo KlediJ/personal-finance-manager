@@ -1,6 +1,6 @@
 import { ipcMain, dialog } from 'electron';
 import * as fs from 'fs';
-import { DatabaseConnection } from '../src/data-storage/database/DatabaseConnection';
+import { DatabaseConnection } from '../../src/data-storage/database/DatabaseConnection';
 
 interface ExportOptions {
   filePath: string;
@@ -164,4 +164,3 @@ function csvEscape(value: any): string {
   }
   return str;
 }
-

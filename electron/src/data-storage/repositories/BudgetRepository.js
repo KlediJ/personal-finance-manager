@@ -23,7 +23,7 @@ class BudgetRepository extends BaseRepository_1.BaseRepository {
      */
     getAllWithCategories() {
         const query = `
-      SELECT b.*, c.name as category_name, c.type as category_type, c.icon as category_icon
+      SELECT b.*, c.name as category_name, c.type as category_type
       FROM budgets b
       JOIN categories c ON b.category_id = c.category_id
     `;
@@ -31,8 +31,7 @@ class BudgetRepository extends BaseRepository_1.BaseRepository {
         return rows.map((row) => ({
             ...this.mapToEntity(row),
             category_name: row.category_name,
-            category_type: row.category_type,
-            category_icon: row.category_icon
+            category_type: row.category_type
         }));
     }
     /**
@@ -94,7 +93,7 @@ class BudgetRepository extends BaseRepository_1.BaseRepository {
     getCurrentBudgetsWithCategories() {
         const today = new Date().toISOString().split('T')[0];
         const query = `
-      SELECT b.*, c.name as category_name, c.type as category_type, c.icon as category_icon
+      SELECT b.*, c.name as category_name, c.type as category_type
       FROM budgets b
       JOIN categories c ON b.category_id = c.category_id
       WHERE b.start_date <= ? AND b.end_date >= ?
@@ -103,8 +102,7 @@ class BudgetRepository extends BaseRepository_1.BaseRepository {
         return rows.map((row) => ({
             ...this.mapToEntity(row),
             category_name: row.category_name,
-            category_type: row.category_type,
-            category_icon: row.category_icon
+            category_type: row.category_type
         }));
     }
     /**
@@ -127,7 +125,6 @@ class BudgetRepository extends BaseRepository_1.BaseRepository {
         b.amount as budget_amount, 
         c.name as category_name,
         c.type as category_type,
-        c.icon as category_icon,
         (
           SELECT COALESCE(SUM(amount), 0)
           FROM transactions
@@ -153,7 +150,6 @@ class BudgetRepository extends BaseRepository_1.BaseRepository {
                 category_id: row.category_id,
                 category_name: row.category_name,
                 category_type: row.category_type,
-                category_icon: row.category_icon,
                 budget_amount: row.budget_amount,
                 spent_amount: spent,
                 remaining_amount: row.budget_amount - spent,

@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const path = __importStar(require("path"));
 const DatabaseManager_1 = require("../src/data-storage/database/DatabaseManager");
+const DatabaseConnection_1 = require("../src/data-storage/database/DatabaseConnection");
 const accountHandlers_1 = require("./ipc/accountHandlers");
 const transactionHandlers_1 = require("./ipc/transactionHandlers");
 const categoryHandlers_1 = require("./ipc/categoryHandlers");
@@ -44,38 +45,51 @@ const budgetHandlers_1 = require("./ipc/budgetHandlers");
 const billHandlers_1 = require("./ipc/billHandlers");
 const loanHandlers_1 = require("./ipc/loanHandlers");
 const interestHandlers_1 = require("./ipc/interestHandlers");
+const importHandlers_1 = require("./ipc/importHandlers");
 const aiHandlers_1 = require("./ipc/aiHandlers");
 let mainWindow = null;
-async function createWindow() {
-    // Initialize database
+async function initializeDatabase() {
     try {
         console.log('Starting database initialization...');
+        // Ensure the database path is configured before any repositories touch it
+        DatabaseConnection_1.DatabaseConnection.initialize();
         await DatabaseManager_1.DatabaseManager.getInstance().initialize();
         console.log('Database initialized successfully');
-        // Set up IPC handlers
+    }
+    catch (error) {
+        console.error('Database initialization failed:', error);
+    }
+}
+async function createWindow() {
+    // Initialize database (non-fatal for IPC setup)
+    await initializeDatabase();
+    // Set up IPC handlers
+    try {
         console.log('Setting up IPC handlers...');
         (0, accountHandlers_1.setupAccountHandlers)();
-        console.log('✓ Account handlers set up');
+        console.log('Account handlers set up');
         (0, transactionHandlers_1.setupTransactionHandlers)();
-        console.log('✓ Transaction handlers set up');
+        console.log('Transaction handlers set up');
         (0, categoryHandlers_1.setupCategoryHandlers)();
-        console.log('✓ Category handlers set up');
+        console.log('Category handlers set up');
         (0, payeeHandlers_1.setupPayeeHandlers)();
-        console.log('✓ Payee handlers set up');
+        console.log('Payee handlers set up');
         (0, budgetHandlers_1.setupBudgetHandlers)();
-        console.log('✓ Budget handlers set up');
+        console.log('Budget handlers set up');
         (0, billHandlers_1.setupBillHandlers)();
-        console.log('✓ Bill handlers set up');
+        console.log('Bill handlers set up');
         (0, loanHandlers_1.setupLoanHandlers)();
-        console.log('✓ Loan handlers set up');
+        console.log('Loan handlers set up');
         (0, interestHandlers_1.setupInterestHandlers)();
-        console.log('✓ Interest handlers set up');
+        console.log('Interest handlers set up');
+        (0, importHandlers_1.setupImportHandlers)();
+        console.log('Import handlers set up');
         (0, aiHandlers_1.initializeAIHandlers)();
-        console.log('✓ AI handlers set up');
+        console.log('AI handlers set up');
         console.log('All IPC handlers initialized successfully');
     }
     catch (error) {
-        console.error('Initialization failed:', error);
+        console.error('IPC handler setup failed:', error);
     }
     // Create the browser window
     mainWindow = new electron_1.BrowserWindow({
@@ -95,14 +109,30 @@ async function createWindow() {
         mainWindow.webContents.openDevTools();
     }
     else {
-        // In production, load the bundled index.html
-        mainWindow.loadFile(path.join(__dirname, '../index.html'));
+        // In production, load the bundled index.html from the app's dist folder.
+        // app.getAppPath() points at the app.asar root when packaged.
+        const indexPath = path.join(electron_1.app.getAppPath(), 'dist', 'index.html');
+        mainWindow.loadFile(indexPath);
     }
     // When window is closed
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
 }
+// Provide basic environment information to the renderer (used by Settings/EnvironmentIndicator)
+electron_1.ipcMain.handle('app:getEnvironment', () => {
+    const environment = process.env.NODE_ENV || 'production';
+    const userData = electron_1.app.getPath('userData');
+    const dbDirectory = path.join(userData, 'database');
+    const dbPath = path.join(dbDirectory, 'finance_manager.db');
+    return {
+        environment,
+        dbPath,
+        version: electron_1.app.getVersion(),
+        appPath: electron_1.app.getAppPath(),
+        userData
+    };
+});
 // When Electron has finished initialization
 electron_1.app.whenReady().then(() => {
     // Create window

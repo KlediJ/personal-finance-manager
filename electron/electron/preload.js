@@ -148,6 +148,7 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         categorizeTransaction: (transaction) => electron_1.ipcRenderer.invoke('ai:categorizeTransaction', transaction),
         batchCategorizeTransactions: (transactions) => electron_1.ipcRenderer.invoke('ai:batchCategorizeTransactions', transactions),
         learnFromFeedback: (feedback) => electron_1.ipcRenderer.invoke('ai:learnFromFeedback', feedback),
+        addCategorizationRule: (payload) => electron_1.ipcRenderer.invoke('ai:addCategorizationRule', payload),
         // Query processing
         processQuery: (query) => electron_1.ipcRenderer.invoke('ai:processQuery', query),
         // Financial Analysis

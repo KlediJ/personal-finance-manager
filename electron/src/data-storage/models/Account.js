@@ -18,4 +18,3 @@ var AccountClass;
     AccountClass["INCOME"] = "Income";
     AccountClass["EXPENSE"] = "Expense";
 })(AccountClass || (exports.AccountClass = AccountClass = {}));
-//# sourceMappingURL=Account.js.map

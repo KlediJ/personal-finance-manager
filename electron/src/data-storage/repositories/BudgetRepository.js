@@ -159,4 +159,3 @@ class BudgetRepository extends BaseRepository_1.BaseRepository {
     }
 }
 exports.BudgetRepository = BudgetRepository;
-//# sourceMappingURL=BudgetRepository.js.map

@@ -37,6 +37,21 @@ export class SchemaInitializer {
     
     console.log('Database schema initialized');
   }
+
+  private static addColumnIfMissing(
+    db: any,
+    tableName: string,
+    columnName: string,
+    columnDefinition: string
+  ): void {
+    const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+    const hasColumn = columns.some((column: any) => column.name === columnName);
+
+    if (!hasColumn) {
+      db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`);
+      console.log(`Added ${columnName} column to ${tableName}`);
+    }
+  }
   
   private static createAccountsTable(db: any): void {
     db.exec(`
@@ -55,25 +70,10 @@ export class SchemaInitializer {
     `);
 
     // Chart of Accounts enhancements - Phase 1
-    // Add account_class column for proper accounting classification
-    db.exec(`
-      ALTER TABLE accounts ADD COLUMN account_class TEXT DEFAULT 'Asset';
-    `);
-    
-    // Add account_code column for numbering system (1000-Assets, 2000-Liabilities, etc.)
-    db.exec(`
-      ALTER TABLE accounts ADD COLUMN account_code TEXT;
-    `);
-    
-    // Add is_liability flag for credit card transaction logic
-    db.exec(`
-      ALTER TABLE accounts ADD COLUMN is_liability INTEGER DEFAULT 0;
-    `);
-    
-    // Add is_virtual flag for virtual accounting accounts (Phase 3 - Accounting Service Enhancement)
-    db.exec(`
-      ALTER TABLE accounts ADD COLUMN is_virtual INTEGER DEFAULT 0;
-    `);
+    this.addColumnIfMissing(db, 'accounts', 'account_class', "TEXT DEFAULT 'Asset'");
+    this.addColumnIfMissing(db, 'accounts', 'account_code', 'TEXT');
+    this.addColumnIfMissing(db, 'accounts', 'is_liability', 'INTEGER DEFAULT 0');
+    this.addColumnIfMissing(db, 'accounts', 'is_virtual', 'INTEGER DEFAULT 0');
 
     console.log('Chart of Accounts enhancements applied to accounts table');
     
@@ -163,10 +163,13 @@ export class SchemaInitializer {
     `);
 
     // Credit Card Transaction Logic enhancements - Phase 2
-    // Add transaction_subtype for detailed credit card handling
-    db.exec(`
-      ALTER TABLE transactions ADD COLUMN transaction_subtype TEXT DEFAULT 'standard';
-    `);
+    this.addColumnIfMissing(
+      db,
+      'transactions',
+      'transaction_subtype',
+      "TEXT DEFAULT 'standard'"
+    );
+    this.addColumnIfMissing(db, 'transactions', 'linked_transaction_id', 'INTEGER');
 
     console.log('Credit card transaction logic enhancements applied to transactions table');
     

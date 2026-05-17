@@ -298,10 +298,6 @@ export class TransactionCategorizationService {
   private readonly CONFIDENCE_WEAK_MATCH = 0.6;
   private readonly CONFIDENCE_LOW = 0.5;
 
-  constructor() {
-    console.log('TransactionCategorizationService initialized (Rule-Based, Phase 1)');
-  }
-
   /**
    * Categorize a single transaction
    */
@@ -311,8 +307,6 @@ export class TransactionCategorizationService {
     existingPayees: Payee[]
   ): Promise<CategorizationResult> {
     const description = transaction.description || '';
-
-    console.log(`Categorizing transaction: "${description}"`);
 
     // Extract payee/merchant information
     const payeeExtraction = this.extractPayeeInfo(description, existingPayees);
@@ -899,13 +893,6 @@ export class TransactionCategorizationService {
     correctCategory: Category,
     correctPayee?: Payee
   ): void {
-    // Phase 1: Log for future analysis
-    console.log('User correction received:', {
-      description: transaction.description,
-      category: correctCategory.name,
-      payee: correctPayee?.name
-    });
-
     // Phase 2+: Implement learning mechanism
     // - Store corrections in database
     // - Update pattern weights

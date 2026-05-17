@@ -23,7 +23,8 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
             created_at: row.created_at,
             updated_at: row.updated_at,
             // Credit Card Transaction Logic enhancements - Phase 2
-            transaction_subtype: row.transaction_subtype
+            transaction_subtype: row.transaction_subtype,
+            linked_transaction_id: row.linked_transaction_id
         };
     }
     /**
@@ -292,4 +293,3 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
     }
 }
 exports.TransactionRepository = TransactionRepository;
-//# sourceMappingURL=TransactionRepository.js.map

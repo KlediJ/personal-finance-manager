@@ -9,4 +9,3 @@ var InterestExpenseType;
     InterestExpenseType["OVERDRAFT"] = "overdraft";
     InterestExpenseType["LINE_OF_CREDIT"] = "line_of_credit";
 })(InterestExpenseType || (exports.InterestExpenseType = InterestExpenseType = {}));
-//# sourceMappingURL=InterestExpense.js.map

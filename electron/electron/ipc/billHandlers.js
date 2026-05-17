@@ -206,4 +206,3 @@ function setupBillHandlers() {
         }
     });
 }
-//# sourceMappingURL=billHandlers.js.map

@@ -100,6 +100,45 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ open, onClose }) => {
     setLoading(true);
     
     try {
+      if (accounts.length === 0) {
+        setSnackbar({
+          open: true,
+          message: 'Create an account before exporting transactions.',
+          severity: 'error'
+        });
+        return;
+      }
+
+      const transactions = await window.api.transactions.getAll();
+      const matchingTransactions = transactions.filter((transaction: any) => {
+        if (startDate && transaction.date < startDate) {
+          return false;
+        }
+
+        if (endDate && transaction.date > endDate) {
+          return false;
+        }
+
+        if (accountId && transaction.account_id !== accountId) {
+          return false;
+        }
+
+        if (transactionType && transaction.transaction_type !== transactionType) {
+          return false;
+        }
+
+        return true;
+      });
+
+      if (matchingTransactions.length === 0) {
+        setSnackbar({
+          open: true,
+          message: 'No transactions match the selected export filters.',
+          severity: 'error'
+        });
+        return;
+      }
+
       // Show save dialog
       const saveResult = await window.api.export.showSaveDialog({
         format: fileType,
@@ -258,6 +297,11 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ open, onClose }) => {
                 The export will include all transactions matching your criteria.
                 Select a date range and optional filters, then click Export to save the file.
               </Typography>
+              {accounts.length === 0 && (
+                <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                  Create an account and add transactions before exporting.
+                </Typography>
+              )}
             </Box>
           </Box>
         </DialogContent>
@@ -267,7 +311,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({ open, onClose }) => {
             onClick={handleExport}
             variant="contained"
             startIcon={loading ? <CircularProgress size={20} /> : <DownloadIcon />}
-            disabled={loading || !startDate || !endDate}
+            disabled={loading || !startDate || !endDate || accounts.length === 0}
           >
             Export
           </Button>

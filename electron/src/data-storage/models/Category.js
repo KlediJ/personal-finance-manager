@@ -7,4 +7,3 @@ var CategoryType;
     CategoryType["EXPENSE"] = "expense";
     CategoryType["TRANSFER"] = "transfer";
 })(CategoryType || (exports.CategoryType = CategoryType = {}));
-//# sourceMappingURL=Category.js.map

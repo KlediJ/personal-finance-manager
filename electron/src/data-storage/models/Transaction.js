@@ -23,4 +23,3 @@ var TransactionSubtype;
     TransactionSubtype["LOAN_ADVANCE"] = "loan_advance";
     TransactionSubtype["INTERNAL_TRANSFER"] = "internal_transfer";
 })(TransactionSubtype || (exports.TransactionSubtype = TransactionSubtype = {}));
-//# sourceMappingURL=Transaction.js.map

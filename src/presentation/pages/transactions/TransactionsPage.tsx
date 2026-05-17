@@ -32,10 +32,18 @@ import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Transaction, TransactionType } from '../../../data-storage/models/Transaction';
 import { Account } from '../../../data-storage/models/Account';
 import { Category } from '../../../data-storage/models/Category';
+import { Payee } from '../../../data-storage/models/Payee';
+import { descriptionsLookSimilar, fingerprintDescription } from '../../../data-processing/ai/FingerprintUtil';
+import {
+  getMonthlySpendingRollupMetadata,
+  getSankeyCategoryLabel,
+  getSankeyMerchantLabel,
+  isWithinMonth
+} from '../dashboard/charts/monthlySpendingFlowUtils';
 import TransactionFormDialog from './TransactionFormDialog';
 import ImportWizard from '../import-export/ImportWizard';
 import ExportDialog from '../import-export/ExportDialog';
@@ -52,7 +60,7 @@ const TransactionsPage: React.FC = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [currentTransaction, setCurrentTransaction] = useState<Transaction | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [transactionToDelete, setTransactionToDelete] = useState<number | null>(null);
+  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [selectedTransactions, setSelectedTransactions] = useState<number[]>([]);
   
@@ -71,13 +79,21 @@ const TransactionsPage: React.FC = () => {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | ''>('');
+  const [reviewFilter, setReviewFilter] = useState<
+    '' | 'needs_review' | 'needs_category' | 'needs_payee' | 'ready'
+  >('');
   const [amountMin, setAmountMin] = useState<string>('');
   const [amountMax, setAmountMax] = useState<string>('');
 
   // State for drill-down from dashboard (category/payee)
   const location = useLocation();
+  const navigate = useNavigate();
   const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null);
   const [drilldownPayee, setDrilldownPayee] = useState<string | null>(null);
+  const [drilldownMonth, setDrilldownMonth] = useState<string | null>(null);
+  const [drilldownAccountId, setDrilldownAccountId] = useState<number | 'all' | null>(null);
+  const [drilldownCategoryRollup, setDrilldownCategoryRollup] = useState<string | null>(null);
+  const [drilldownPayeeRollup, setDrilldownPayeeRollup] = useState<string | null>(null);
 
   // State for client-side sorting
   type SortKey =
@@ -151,7 +167,6 @@ const TransactionsPage: React.FC = () => {
         data = await window.api.transactions.getAll();
       }
       
-      console.log('Received transactions:', data);
       setTransactions(data);
     } catch (error) {
       console.error('Error loading transactions:', error);
@@ -166,12 +181,23 @@ const TransactionsPage: React.FC = () => {
   };
 
   // Handle save transaction (create or update)
-  const handleSaveTransaction = async (transaction: Transaction) => {
+  const handleSaveTransaction = async (
+    transaction: Transaction,
+    options?: {
+      applyCategoryToSimilar?: boolean;
+      applyPayeeToSimilar?: boolean;
+    }
+  ) => {
     try {
+      const trimmedPayeeName = (transaction.payee_name || '').trim();
+
       if (transaction.transaction_id) {
         // Update existing transaction
-        console.log('Updating transaction:', transaction);
-        const result = await window.api.transactions.update(transaction.transaction_id, transaction);
+        const result = await window.api.transactions.update(transaction.transaction_id, {
+          ...transaction,
+          payee_name: trimmedPayeeName || undefined,
+          payee_id: trimmedPayeeName ? transaction.payee_id ?? null : null
+        });
         if (result.success) {
           setSnackbar({
             open: true,
@@ -183,8 +209,11 @@ const TransactionsPage: React.FC = () => {
         }
       } else {
         // Create new transaction
-        console.log('Creating transaction:', transaction);
-        const result = await window.api.transactions.create(transaction);
+        const result = await window.api.transactions.create({
+          ...transaction,
+          payee_name: trimmedPayeeName || undefined,
+          payee_id: trimmedPayeeName ? transaction.payee_id ?? null : null
+        });
         if (result.success) {
           setSnackbar({
             open: true,
@@ -195,10 +224,109 @@ const TransactionsPage: React.FC = () => {
           throw new Error('Creation failed');
         }
       }
+
+      let similarUpdatedCount = 0;
+      const shouldApplyToSimilar =
+        Boolean(transaction.transaction_id) &&
+        (options?.applyCategoryToSimilar || options?.applyPayeeToSimilar);
+
+      if (shouldApplyToSimilar) {
+        const sourceFingerprint = fingerprintDescription(transaction.description || '');
+
+        if (sourceFingerprint) {
+          const allTransactions = await window.api.transactions.getAll();
+          const similarTransactions = allTransactions.filter((candidate) => {
+            if (!candidate.transaction_id || candidate.transaction_id === transaction.transaction_id) {
+              return false;
+            }
+
+            if (candidate.transaction_type === TransactionType.TRANSFER) {
+              return false;
+            }
+
+            if (candidate.transaction_type !== transaction.transaction_type) {
+              return false;
+            }
+
+            return descriptionsLookSimilar(
+              candidate.description || '',
+              transaction.description || ''
+            );
+          });
+
+          for (const similarTransaction of similarTransactions) {
+            const updateResult = await window.api.transactions.update(similarTransaction.transaction_id!, {
+              ...similarTransaction,
+              category_id: options?.applyCategoryToSimilar
+                ? transaction.category_id ?? null
+                : similarTransaction.category_id ?? null,
+              payee_id: options?.applyPayeeToSimilar
+                ? (trimmedPayeeName ? transaction.payee_id ?? null : null)
+                : similarTransaction.payee_id ?? null,
+              payee_name: options?.applyPayeeToSimilar
+                ? (trimmedPayeeName || undefined)
+                : similarTransaction.payee_name
+            });
+
+            if (updateResult.success) {
+              similarUpdatedCount++;
+            }
+          }
+        }
+      }
+
+      try {
+        if (window.api?.ai?.learnFromFeedback) {
+          let correctCategory =
+            categories.find((category) => category.category_id === transaction.category_id) || null;
+
+          if (!correctCategory && transaction.category_id) {
+            correctCategory = await window.api.categories.getById(transaction.category_id);
+          }
+
+          const correctPayee: Payee | undefined = trimmedPayeeName
+            ? {
+                payee_id: transaction.payee_id ?? undefined,
+                name: trimmedPayeeName
+              }
+            : undefined;
+
+          window.api.ai
+            .learnFromFeedback({
+              transaction: {
+                ...transaction,
+                payee_name: trimmedPayeeName || undefined,
+                payee_id: correctPayee?.payee_id ?? null
+              },
+              correctCategory,
+              correctPayee
+            })
+            .catch((learningError: any) => {
+              console.error('Error recording ledger transaction feedback:', learningError);
+            });
+        }
+      } catch (feedbackError) {
+        console.error('Error initiating ledger transaction feedback:', feedbackError);
+      }
       
       // Refresh transactions list
+      await loadCategories();
       loadTransactions();
       setFormOpen(false);
+
+      if (similarUpdatedCount > 0) {
+        setSnackbar({
+          open: true,
+          message: `Transaction saved. Applied changes to ${similarUpdatedCount} similar transaction${similarUpdatedCount === 1 ? '' : 's'}.`,
+          severity: 'success'
+        });
+      } else if (shouldApplyToSimilar) {
+        setSnackbar({
+          open: true,
+          message: 'Transaction saved, but no similar transactions matched the current description pattern.',
+          severity: 'warning'
+        });
+      }
     } catch (error) {
       console.error('Error saving transaction:', error);
       setSnackbar({
@@ -221,9 +349,23 @@ const TransactionsPage: React.FC = () => {
     const params = new URLSearchParams(location.search);
     const category = params.get('category');
     const payee = params.get('payee');
+    const sankeyMonth = params.get('sankeyMonth');
+    const sankeyAccount = params.get('sankeyAccount');
+    const categoryRollup = params.get('categoryRollup');
+    const payeeRollup = params.get('payeeRollup');
 
     setDrilldownCategory(category);
     setDrilldownPayee(payee);
+    setDrilldownMonth(sankeyMonth);
+    setDrilldownAccountId(
+      sankeyAccount === 'all'
+        ? 'all'
+        : sankeyAccount
+          ? Number(sankeyAccount)
+          : null
+    );
+    setDrilldownCategoryRollup(categoryRollup);
+    setDrilldownPayeeRollup(payeeRollup);
   }, [location.search]);
 
   // Reload when filters change
@@ -246,6 +388,7 @@ const TransactionsPage: React.FC = () => {
     setStartDate(null);
     setEndDate(null);
     setSelectedCategoryFilter('');
+    setReviewFilter('');
     setAmountMin('');
     setAmountMax('');
     loadTransactions();
@@ -259,26 +402,37 @@ const TransactionsPage: React.FC = () => {
 
   // Open form for editing an existing transaction
   const handleEditTransaction = (transaction: Transaction) => {
+    if (transaction.transaction_type === TransactionType.TRANSFER) {
+      setSnackbar({
+        open: true,
+        message: 'Transfers cannot be edited individually. Delete and recreate the transfer instead.',
+        severity: 'warning'
+      });
+      return;
+    }
+
     setCurrentTransaction(transaction);
     setFormOpen(true);
   };
 
   // Open delete confirmation dialog
-  const handleDeleteClick = (transactionId: number) => {
-    setTransactionToDelete(transactionId);
+  const handleDeleteClick = (transaction: Transaction) => {
+    setTransactionToDelete(transaction);
     setDeleteDialogOpen(true);
   };
 
   // Delete transaction
   const handleDeleteConfirm = async () => {
-    if (transactionToDelete) {
+    if (transactionToDelete?.transaction_id) {
       try {
-        console.log('Deleting transaction:', transactionToDelete);
-        const result = await window.api.transactions.delete(transactionToDelete);
+        const result = await window.api.transactions.delete(transactionToDelete.transaction_id);
         if (result.success) {
           setSnackbar({
             open: true,
-            message: 'Transaction deleted successfully',
+            message:
+              transactionToDelete.transaction_type === TransactionType.TRANSFER
+                ? 'Transfer deleted successfully from both accounts'
+                : 'Transaction deleted successfully',
             severity: 'success'
           });
           loadTransactions();
@@ -306,7 +460,6 @@ const TransactionsPage: React.FC = () => {
   const handleBulkDeleteConfirm = async () => {
     if (selectedTransactions.length > 0) {
       try {
-        console.log('Bulk deleting transactions:', selectedTransactions);
         const result = await window.api.transactions.bulkDelete(selectedTransactions);
         
         if (result.success) {
@@ -425,6 +578,19 @@ const TransactionsPage: React.FC = () => {
 
   const displayedTransactions = useMemo(() => {
     let data = transactions;
+    let sankeyScope = transactions;
+
+    if (drilldownMonth) {
+      sankeyScope = sankeyScope.filter((t: any) => isWithinMonth(t.date, drilldownMonth));
+      data = data.filter((t: any) => isWithinMonth(t.date, drilldownMonth));
+    }
+
+    if (drilldownAccountId && drilldownAccountId !== 'all') {
+      sankeyScope = sankeyScope.filter((t: any) => t.account_id === drilldownAccountId);
+      data = data.filter((t: any) => t.account_id === drilldownAccountId);
+    }
+
+    const sankeyMetadata = getMonthlySpendingRollupMetadata(sankeyScope as any[]);
 
     if (drilldownCategory) {
       data = data.filter(
@@ -440,10 +606,51 @@ const TransactionsPage: React.FC = () => {
       );
     }
 
+    if (drilldownCategoryRollup === 'other') {
+      data = data.filter(
+        (t: any) =>
+          t.transaction_type === 'expense' &&
+          getSankeyCategoryLabel(t.category_name || null, sankeyMetadata) ===
+            'Other categories'
+      );
+    }
+
+    if (drilldownPayeeRollup === 'other') {
+      data = data.filter(
+        (t: any) =>
+          t.transaction_type === 'expense' &&
+          getSankeyMerchantLabel(t.payee_name || null, sankeyMetadata) ===
+            'Other merchants'
+      );
+    }
+
+    if (drilldownPayeeRollup === 'none') {
+      data = data.filter(
+        (t: any) =>
+          t.transaction_type === 'expense' && !(t.payee_name || '').trim()
+      );
+    }
+
     if (selectedCategoryFilter) {
       data = data.filter(
         (t: any) => (t.category_id ?? null) === selectedCategoryFilter
       );
+    }
+
+    if (reviewFilter === 'needs_review') {
+      data = data.filter((t: any) => !t.category_id || !(t.payee_name || '').trim());
+    }
+
+    if (reviewFilter === 'needs_category') {
+      data = data.filter((t: any) => !t.category_id);
+    }
+
+    if (reviewFilter === 'needs_payee') {
+      data = data.filter((t: any) => !(t.payee_name || '').trim());
+    }
+
+    if (reviewFilter === 'ready') {
+      data = data.filter((t: any) => t.category_id && (t.payee_name || '').trim());
     }
 
     const min =
@@ -505,7 +712,12 @@ const TransactionsPage: React.FC = () => {
     transactions,
     drilldownCategory,
     drilldownPayee,
+    drilldownMonth,
+    drilldownAccountId,
+    drilldownCategoryRollup,
+    drilldownPayeeRollup,
     selectedCategoryFilter,
+    reviewFilter,
     amountMin,
     amountMax,
     sortBy,
@@ -525,6 +737,23 @@ const TransactionsPage: React.FC = () => {
     });
   };
 
+  const hasAccounts = accounts.length > 0;
+  const canCreateTransfers = accounts.length > 1;
+  const reviewCounts = useMemo(() => {
+    const uncategorized = transactions.filter((transaction) => !transaction.category_id).length;
+    const noPayee = transactions.filter((transaction) => !(transaction.payee_name || '').trim()).length;
+    const needsReview = transactions.filter(
+      (transaction) => !transaction.category_id || !(transaction.payee_name || '').trim()
+    ).length;
+
+    return {
+      uncategorized,
+      noPayee,
+      needsReview,
+      ready: Math.max(transactions.length - needsReview, 0)
+    };
+  }, [transactions]);
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -534,6 +763,7 @@ const TransactionsPage: React.FC = () => {
             variant="outlined"
             startIcon={<FileUploadIcon />}
             onClick={() => setImportWizardOpen(true)}
+            disabled={!hasAccounts}
           >
             Import
           </Button>
@@ -558,6 +788,7 @@ const TransactionsPage: React.FC = () => {
             variant="contained" 
             startIcon={<AddIcon />}
             onClick={handleAddTransaction}
+            disabled={!hasAccounts}
             sx={{ mr: 1 }}
           >
             Add Transaction
@@ -566,11 +797,32 @@ const TransactionsPage: React.FC = () => {
             variant="outlined" 
             color="primary"
             onClick={() => setTransferDialogOpen(true)}
+            disabled={!canCreateTransfers}
           >
             Transfer
           </Button>
         </Box>
       </Box>
+
+      {!hasAccounts && (
+        <Alert
+          severity="info"
+          sx={{ mb: 3 }}
+          action={
+            <Button color="inherit" size="small" onClick={() => navigate('/accounts')}>
+              Create Account
+            </Button>
+          }
+        >
+          Create your first account before importing data, adding transactions, or recording transfers.
+        </Alert>
+      )}
+
+      {hasAccounts && !canCreateTransfers && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Add a second account if you want to record transfers between accounts.
+        </Alert>
+      )}
 
       {/* Filters Section */}
       <Paper sx={{ p: 2, mb: 3 }}>
@@ -585,6 +837,39 @@ const TransactionsPage: React.FC = () => {
           >
             Reset Filters
           </Button>
+        </Box>
+
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+          <Chip
+            label={`Needs Review (${reviewCounts.needsReview})`}
+            color={reviewFilter === 'needs_review' ? 'warning' : 'default'}
+            variant={reviewFilter === 'needs_review' ? 'filled' : 'outlined'}
+            onClick={() =>
+              setReviewFilter((prev) => (prev === 'needs_review' ? '' : 'needs_review'))
+            }
+          />
+          <Chip
+            label={`Uncategorized (${reviewCounts.uncategorized})`}
+            color={reviewFilter === 'needs_category' ? 'warning' : 'default'}
+            variant={reviewFilter === 'needs_category' ? 'filled' : 'outlined'}
+            onClick={() =>
+              setReviewFilter((prev) => (prev === 'needs_category' ? '' : 'needs_category'))
+            }
+          />
+          <Chip
+            label={`No Payee (${reviewCounts.noPayee})`}
+            color={reviewFilter === 'needs_payee' ? 'warning' : 'default'}
+            variant={reviewFilter === 'needs_payee' ? 'filled' : 'outlined'}
+            onClick={() =>
+              setReviewFilter((prev) => (prev === 'needs_payee' ? '' : 'needs_payee'))
+            }
+          />
+          <Chip
+            label={`Ready (${reviewCounts.ready})`}
+            color={reviewFilter === 'ready' ? 'success' : 'default'}
+            variant={reviewFilter === 'ready' ? 'filled' : 'outlined'}
+            onClick={() => setReviewFilter((prev) => (prev === 'ready' ? '' : 'ready'))}
+          />
         </Box>
         
         <Grid container spacing={2}>
@@ -703,6 +988,29 @@ const TransactionsPage: React.FC = () => {
             </FormControl>
           </Grid>
 
+          <Grid item xs={12} sm={4}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Review Status</InputLabel>
+              <Select
+                value={reviewFilter}
+                label="Review Status"
+                onChange={(e) =>
+                  setReviewFilter(
+                    e.target.value as '' | 'needs_review' | 'needs_category' | 'needs_payee' | 'ready'
+                  )
+                }
+              >
+                <MenuItem value="">
+                  <em>All Transactions</em>
+                </MenuItem>
+                <MenuItem value="needs_review">Needs Review</MenuItem>
+                <MenuItem value="needs_category">Uncategorized</MenuItem>
+                <MenuItem value="needs_payee">No Payee</MenuItem>
+                <MenuItem value="ready">Ready</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
           {/* Filter by amount range */}
           <Grid item xs={12} sm={4}>
             <TextField
@@ -814,7 +1122,9 @@ const TransactionsPage: React.FC = () => {
                 <TableRow>
                   <TableCell colSpan={10} align="center">
                     <Typography sx={{ py: 2 }}>
-                      No transactions found. Try adjusting your filters or adding a new transaction.
+                      {hasAccounts
+                        ? 'No transactions found. Try adjusting your filters or adding a new transaction.'
+                        : 'No accounts yet. Create your first account before adding or importing transactions.'}
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -859,7 +1169,7 @@ const TransactionsPage: React.FC = () => {
                       <IconButton 
                         size="small" 
                         color="error"
-                        onClick={() => handleDeleteClick(transaction.transaction_id!)}
+                        onClick={() => handleDeleteClick(transaction)}
                       >
                         <DeleteIcon />
                       </IconButton>
@@ -879,10 +1189,14 @@ const TransactionsPage: React.FC = () => {
       >
         <Box sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>
-            Delete Transaction
+            {transactionToDelete?.transaction_type === TransactionType.TRANSFER
+              ? 'Delete Transfer'
+              : 'Delete Transaction'}
           </Typography>
           <Typography variant="body1" sx={{ mb: 3 }}>
-            Are you sure you want to delete this transaction? This action cannot be undone.
+            {transactionToDelete?.transaction_type === TransactionType.TRANSFER
+              ? 'Deleting this transfer will remove both sides of the transfer and recalculate the account balances. This action cannot be undone.'
+              : 'Are you sure you want to delete this transaction? This action cannot be undone.'}
           </Typography>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
             <Button onClick={() => setDeleteDialogOpen(false)}>

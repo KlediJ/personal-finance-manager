@@ -95,4 +95,3 @@ class DatabaseManager {
     }
 }
 exports.DatabaseManager = DatabaseManager;
-//# sourceMappingURL=DatabaseManager.js.map

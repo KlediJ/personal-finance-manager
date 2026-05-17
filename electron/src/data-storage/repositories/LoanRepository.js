@@ -217,4 +217,3 @@ class AmortizationScheduleRepository extends BaseRepository_1.BaseRepository {
     }
 }
 exports.AmortizationScheduleRepository = AmortizationScheduleRepository;
-//# sourceMappingURL=LoanRepository.js.map

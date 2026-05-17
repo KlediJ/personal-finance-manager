@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import * as path from 'path';
 import { DatabaseManager } from '../src/data-storage/database/DatabaseManager';
 import { DatabaseConnection } from '../src/data-storage/database/DatabaseConnection';
@@ -14,49 +14,54 @@ import { setupImportHandlers } from './ipc/importHandlers';
 import { initializeAIHandlers, cleanupAIServices } from './ipc/aiHandlers';
 
 let mainWindow: BrowserWindow | null = null;
+let databaseInitialized = false;
 
 async function initializeDatabase(): Promise<void> {
   try {
-    console.log('Starting database initialization...');
     // Ensure the database path is configured before any repositories touch it
     DatabaseConnection.initialize();
     await DatabaseManager.getInstance().initialize();
-    console.log('Database initialized successfully');
+    databaseInitialized = true;
   } catch (error) {
+    databaseInitialized = false;
     console.error('Database initialization failed:', error);
+    throw error;
   }
 }
 
 async function createWindow() {
-  // Initialize database (non-fatal for IPC setup)
-  await initializeDatabase();
-
-  // Set up IPC handlers
   try {
-    console.log('Setting up IPC handlers...');
+    await initializeDatabase();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown database initialization error';
+    dialog.showErrorBox(
+      'Database Initialization Failed',
+      `Libri could not start because the database failed to initialize.\n\n${message}`
+    );
+    app.quit();
+    return;
+  }
+
+  try {
     setupAccountHandlers();
-    console.log('Account handlers set up');
     setupTransactionHandlers();
-    console.log('Transaction handlers set up');
     setupCategoryHandlers();
-    console.log('Category handlers set up');
     setupPayeeHandlers();
-    console.log('Payee handlers set up');
     setupBudgetHandlers();
-    console.log('Budget handlers set up');
     setupBillHandlers();
-    console.log('Bill handlers set up');
     setupLoanHandlers();
-    console.log('Loan handlers set up');
     setupInterestHandlers();
-    console.log('Interest handlers set up');
     setupImportHandlers();
-    console.log('Import handlers set up');
     initializeAIHandlers();
-    console.log('AI handlers set up');
-    console.log('All IPC handlers initialized successfully');
   } catch (error) {
     console.error('IPC handler setup failed:', error);
+    const message = error instanceof Error ? error.message : 'Unknown IPC initialization error';
+    dialog.showErrorBox(
+      'Application Startup Failed',
+      `Libri could not finish starting because the application services failed to initialize.\n\n${message}`
+    );
+    app.quit();
+    return;
   }
 
   // Create the browser window
@@ -118,7 +123,10 @@ app.on('window-all-closed', () => {
     // Cleanup AI services
     cleanupAIServices();
     // Close database connection
-    DatabaseManager.getInstance().shutdown();
+    if (databaseInitialized) {
+      DatabaseManager.getInstance().shutdown();
+      databaseInitialized = false;
+    }
     app.quit();
   }
 });

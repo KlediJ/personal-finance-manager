@@ -70,11 +70,8 @@ const AIPage: React.FC = () => {
       try {
         // Check if AI API is available
         if (!window.api || !window.api.ai || !window.api.ai.getStatus) {
-          console.log('AI API not available, using mock status');
-          // Simulate loading then ready
-          setTimeout(() => {
-            setAiStatus('ready');
-          }, 1500);
+          console.log('AI API not available');
+          setAiStatus('error');
           return;
         }
         
@@ -131,6 +128,10 @@ const AIPage: React.FC = () => {
         </Typography>
       </Box>
 
+      <Alert severity="info" sx={{ mb: 3 }}>
+        This build ships the local rule-based categorization tools. Natural-language chat and advanced financial analysis are not included in this release build.
+      </Alert>
+
       {/* AI Status */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -145,10 +146,16 @@ const AIPage: React.FC = () => {
             {aiStatus === 'ready' && (
               <Chip label="Ready" color="success" variant="outlined" />
             )}
-            {aiStatus === 'error' && (
-              <Chip label="Error" color="error" variant="outlined" />
+          {aiStatus === 'error' && (
+              <Chip label="Unavailable" color="error" variant="outlined" />
             )}
           </Box>
+
+          {aiStatus === 'error' && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              The AI categorization service could not be initialized. Categorization actions will not run until this is fixed.
+            </Alert>
+          )}
 
           {aiStatus === 'ready' && (
             <Box>

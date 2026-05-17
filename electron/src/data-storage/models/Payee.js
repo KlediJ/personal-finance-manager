@@ -13,4 +13,3 @@ var PayeeBusinessType;
     PayeeBusinessType["FINANCIAL"] = "financial";
     PayeeBusinessType["OTHER"] = "other";
 })(PayeeBusinessType || (exports.PayeeBusinessType = PayeeBusinessType = {}));
-//# sourceMappingURL=Payee.js.map

@@ -22,12 +22,14 @@ interface DataPreviewStepProps {
   validatedData: Transaction[];
   validationErrors: any[];
   stats: { total: number, valid: number, invalid: number } | null;
+  transferCandidateCount?: number;
 }
 
 const DataPreviewStep: React.FC<DataPreviewStepProps> = ({
   validatedData,
   validationErrors,
-  stats
+  stats,
+  transferCandidateCount = 0
 }) => {
   const [tabValue, setTabValue] = useState(0);
 
@@ -80,6 +82,7 @@ const DataPreviewStep: React.FC<DataPreviewStepProps> = ({
               Total rows: {stats.total} | 
               Valid: {stats.valid} | 
               Invalid: {stats.invalid}
+              {transferCandidateCount > 0 ? ` | Transfer candidates: ${transferCandidateCount}` : ''}
             </Typography>
           ) : (
             'No data to import'
@@ -203,7 +206,7 @@ const DataPreviewStep: React.FC<DataPreviewStepProps> = ({
       <Box>
         <Typography variant="body2" color="text.secondary">
           <strong>Note:</strong> Only valid transactions will be imported. Review the data above to ensure everything looks correct.
-          Click "Import" to proceed with importing the valid transactions, or go back to adjust your column mappings.
+          Click "Next" to review grouped category suggestions, then transfer candidates before importing, or go back to adjust your column mappings.
         </Typography>
       </Box>
     </Box>

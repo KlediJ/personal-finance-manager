@@ -106,4 +106,3 @@ class JournalEntryRepository extends BaseRepository_1.BaseRepository {
     }
 }
 exports.JournalEntryRepository = JournalEntryRepository;
-//# sourceMappingURL=JournalEntryRepository.js.map

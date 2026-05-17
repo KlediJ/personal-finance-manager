@@ -50,46 +50,18 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         getHierarchy: () => electron_1.ipcRenderer.invoke('categories:getHierarchy'),
         create: (category) => electron_1.ipcRenderer.invoke('categories:create', category),
         update: (id, category) => electron_1.ipcRenderer.invoke('categories:update', id, category),
-        delete: (id) => electron_1.ipcRenderer.invoke('categories:delete', id)
-    },
-    debug: {
-        getCategories: () => electron_1.ipcRenderer.invoke('debug:getCategories'),
-        migrateCategories: () => electron_1.ipcRenderer.invoke('debug:migrateCategories'),
-        seedFeedbackFromWF: () => electron_1.ipcRenderer.invoke('debug:seedFeedbackFromWF')
+        delete: (id) => electron_1.ipcRenderer.invoke('categories:delete', id),
+        bulkDelete: (ids) => electron_1.ipcRenderer.invoke('categories:bulkDelete', ids)
     },
     payees: {
-        getAll: () => {
-            console.log('Preload: Calling payees:getAll');
-            return electron_1.ipcRenderer.invoke('payees:getAll');
-        },
-        getById: (id) => {
-            console.log('Preload: Calling payees:getById', id);
-            return electron_1.ipcRenderer.invoke('payees:getById', id);
-        },
-        create: (payee) => {
-            console.log('Preload: Calling payees:create', payee);
-            return electron_1.ipcRenderer.invoke('payees:create', payee);
-        },
-        update: (id, payee) => {
-            console.log('Preload: Calling payees:update', id, payee);
-            return electron_1.ipcRenderer.invoke('payees:update', id, payee);
-        },
-        delete: (id) => {
-            console.log('Preload: Calling payees:delete', id);
-            return electron_1.ipcRenderer.invoke('payees:delete', id);
-        },
-        bulkDelete: (ids) => {
-            console.log('Preload: Calling payees:bulkDelete', ids);
-            return electron_1.ipcRenderer.invoke('payees:bulkDelete', ids);
-        },
-        getEnhanced: () => {
-            console.log('Preload: Calling payees:getEnhanced');
-            return electron_1.ipcRenderer.invoke('payees:getEnhanced');
-        },
-        createIfNotExists: (payee) => {
-            console.log('Preload: Calling payees:createIfNotExists', payee);
-            return electron_1.ipcRenderer.invoke('payees:createIfNotExists', payee);
-        }
+        getAll: () => electron_1.ipcRenderer.invoke('payees:getAll'),
+        getById: (id) => electron_1.ipcRenderer.invoke('payees:getById', id),
+        create: (payee) => electron_1.ipcRenderer.invoke('payees:create', payee),
+        update: (id, payee) => electron_1.ipcRenderer.invoke('payees:update', id, payee),
+        delete: (id) => electron_1.ipcRenderer.invoke('payees:delete', id),
+        bulkDelete: (ids) => electron_1.ipcRenderer.invoke('payees:bulkDelete', ids),
+        getEnhanced: () => electron_1.ipcRenderer.invoke('payees:getEnhanced'),
+        createIfNotExists: (payee) => electron_1.ipcRenderer.invoke('payees:createIfNotExists', payee)
     },
     database: {
         // You can add database diagnostic methods here in the future
@@ -97,20 +69,14 @@ electron_1.contextBridge.exposeInMainWorld('api', {
     },
     budgets: {
         getAll: () => electron_1.ipcRenderer.invoke('budgets:getAll'),
-        getAllWithCategories: () => {
-            console.log('Preload: Calling budgets:getAllWithCategories');
-            return electron_1.ipcRenderer.invoke('budgets:getAllWithCategories');
-        },
+        getAllWithCategories: () => electron_1.ipcRenderer.invoke('budgets:getAllWithCategories'),
         getById: (id) => electron_1.ipcRenderer.invoke('budgets:getById', id),
         getByPeriod: (period) => electron_1.ipcRenderer.invoke('budgets:getByPeriod', period),
         getByDateRange: (startDate, endDate) => electron_1.ipcRenderer.invoke('budgets:getByDateRange', startDate, endDate),
         getByCategory: (categoryId) => electron_1.ipcRenderer.invoke('budgets:getByCategory', categoryId),
         getCurrentBudgets: () => electron_1.ipcRenderer.invoke('budgets:getCurrentBudgets'),
         getCurrentBudgetsWithCategories: () => electron_1.ipcRenderer.invoke('budgets:getCurrentBudgetsWithCategories'),
-        getBudgetProgress: (date) => {
-            console.log('Preload: Calling budgets:getBudgetProgress', date);
-            return electron_1.ipcRenderer.invoke('budgets:getBudgetProgress', date);
-        },
+        getBudgetProgress: (date) => electron_1.ipcRenderer.invoke('budgets:getBudgetProgress', date),
         create: (budget) => electron_1.ipcRenderer.invoke('budgets:create', budget),
         update: (id, budget) => electron_1.ipcRenderer.invoke('budgets:update', id, budget),
         delete: (id) => electron_1.ipcRenderer.invoke('budgets:delete', id)
@@ -239,4 +205,3 @@ electron_1.contextBridge.exposeInMainWorld('api', {
         recordExpense: (params) => electron_1.ipcRenderer.invoke('interest:recordExpense', params)
     }
 });
-//# sourceMappingURL=preload.js.map

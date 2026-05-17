@@ -3,15 +3,10 @@ import { DatabaseManager } from '../../src/data-storage/database/DatabaseManager
 import { Payee } from '../../src/data-storage/models/Payee';
 
 export function setupPayeeHandlers(): void {
-  console.log('Setting up payee handlers...');
-  
   let payeeRepository;
   try {
     const databaseManager = DatabaseManager.getInstance();
-    console.log('Database manager obtained successfully');
-    
     payeeRepository = databaseManager.getPayeeRepository();
-    console.log('Payee repository obtained successfully');
   } catch (error) {
     console.error('Failed to get payee repository:', error);
     throw error;
@@ -40,20 +35,10 @@ export function setupPayeeHandlers(): void {
   // Create payee
   ipcMain.handle('payees:create', async (_, payee: Payee) => {
     try {
-      console.log('Creating payee with data:', JSON.stringify(payee, null, 2));
-      
-      // Test database connection
-      const testQuery = payeeRepository.getAll();
-      console.log('Current payees in database:', testQuery.length);
-      
       const id = payeeRepository.create(payee);
-      console.log('Payee created successfully with ID:', id);
-      
       return { id, success: true };
     } catch (error) {
       console.error('Error creating payee:', error);
-      console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
-      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
@@ -61,11 +46,7 @@ export function setupPayeeHandlers(): void {
   // Create payee if it doesn't exist
   ipcMain.handle('payees:createIfNotExists', async (_, payee: Payee) => {
     try {
-      console.log('Creating payee if not exists with data:', JSON.stringify(payee, null, 2));
-      
       const result = payeeRepository.createIfNotExists(payee);
-      console.log('Payee creation result:', result);
-      
       return { ...result, success: true };
     } catch (error) {
       console.error('Error creating payee if not exists:', error);
@@ -108,20 +89,32 @@ export function setupPayeeHandlers(): void {
 
   // Bulk delete payees by IDs
   ipcMain.handle('payees:bulkDelete', async (_, ids: number[]) => {
-    try {
-      let deletedCount = 0;
-      for (const id of ids) {
-        if (!id) continue;
+    let deletedCount = 0;
+    const errors: string[] = [];
+
+    for (const id of ids) {
+      if (!id) continue;
+
+      try {
         const success = payeeRepository.delete(id);
         if (success) {
           deletedCount++;
         }
+      } catch (error) {
+        console.error(`Error bulk deleting payee ${id}:`, error);
+        errors.push(error instanceof Error ? error.message : `Failed to delete payee ${id}`);
       }
-      return { success: true, deletedCount };
-    } catch (error) {
-      console.error('Error bulk deleting payees:', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+
+    if (errors.length > 0) {
+      return {
+        success: false,
+        deletedCount,
+        error: errors[0]
+      };
+    }
+
+    return { success: true, deletedCount };
   });
 
   // Get enhanced payees (with transaction stats)

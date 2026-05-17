@@ -215,4 +215,3 @@ function setupLoanHandlers() {
         }
     });
 }
-//# sourceMappingURL=loanHandlers.js.map

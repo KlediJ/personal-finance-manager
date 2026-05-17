@@ -1,7 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { styled } from '@mui/material/styles';
 import {
-  AppBar,
   Box,
   CssBaseline,
   Divider,
@@ -19,16 +17,11 @@ import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ReceiptIcon from '@mui/icons-material/Receipt';
-import PersonIcon from '@mui/icons-material/Person';
-import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import SettingsIcon from '@mui/icons-material/Settings';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
-import HomeIcon from '@mui/icons-material/Home';
-import CreditCardIcon from '@mui/icons-material/CreditCard';
-import TimelineIcon from '@mui/icons-material/Timeline';
 import { useNavigate, useLocation } from 'react-router-dom';
 // Import the logo properly
 import logoImage from '../../assets/images/logo.png';
+import WelcomeDialog from '../components/WelcomeDialog';
 
 const drawerWidth = 240;
 
@@ -38,6 +31,8 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [accountCount, setAccountCount] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -45,34 +40,59 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     setMobileOpen(!mobileOpen);
   };
 
-  const menuItems = useMemo(() => {
-    let showAI = true;
-    try {
-      if (typeof window !== 'undefined') {
-        const stored = window.localStorage.getItem('pfm.showAI');
-        if (stored === 'false') {
-          showAI = false;
-        }
-      }
-    } catch {
-      showAI = true;
+  React.useEffect(() => {
+    const onboardingDismissed = window.localStorage.getItem('libri.onboarding.dismissed.v1');
+    if (onboardingDismissed === 'true') {
+      return;
     }
 
+    let cancelled = false;
+
+    const loadAccountCount = async () => {
+      try {
+        const accounts = await window.api.accounts.getAll();
+        if (!cancelled) {
+          setAccountCount(accounts.length);
+          setWelcomeOpen(true);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setWelcomeOpen(true);
+        }
+      }
+    };
+
+    loadAccountCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleCloseWelcome = () => {
+    window.localStorage.setItem('libri.onboarding.dismissed.v1', 'true');
+    setWelcomeOpen(false);
+  };
+
+  const handleGoToAccounts = () => {
+    handleCloseWelcome();
+    navigate('/accounts');
+  };
+
+  const handleGoToLedger = () => {
+    handleCloseWelcome();
+    navigate('/transactions');
+  };
+
+  const menuItems = useMemo(() => {
     const items = [
-    // Core workspace
-    { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-    { text: 'Accounts', icon: <AccountBalanceIcon />, path: '/accounts' },
-    { text: 'Ledger', icon: <ReceiptIcon />, path: '/transactions' },
-    { text: 'Monthly Activity', icon: <TimelineIcon />, path: '/activity' },
-    { text: 'Budget', icon: <MonetizationOnIcon />, path: '/budget' },
-    // Supporting tools & configuration
-    { text: 'Loans', icon: <HomeIcon />, path: '/loans' },
-    { text: 'Credit Cards', icon: <CreditCardIcon />, path: '/credit-cards' },
-    showAI ? { text: 'AI Assistant', icon: <SmartToyIcon />, path: '/ai' } : null,
-    { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
+      { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
+      { text: 'Accounts', icon: <AccountBalanceIcon />, path: '/accounts' },
+      { text: 'Ledger', icon: <ReceiptIcon />, path: '/transactions' },
+      { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
     ];
 
-    return items.filter(Boolean) as { text: string; icon: React.ReactNode; path: string }[];
+    return items;
   }, []);
 
   const drawer = (
@@ -176,6 +196,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       >
         {children}
       </Box>
+      <WelcomeDialog
+        open={welcomeOpen}
+        accountCount={accountCount}
+        onClose={handleCloseWelcome}
+        onGoToAccounts={handleGoToAccounts}
+        onGoToLedger={handleGoToLedger}
+      />
     </Box>
   );
 };

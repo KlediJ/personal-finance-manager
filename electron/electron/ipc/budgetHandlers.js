@@ -4,7 +4,6 @@ exports.setupBudgetHandlers = setupBudgetHandlers;
 const electron_1 = require("electron");
 const DatabaseManager_1 = require("../../src/data-storage/database/DatabaseManager");
 function setupBudgetHandlers() {
-    console.log('Setting up budget handlers...');
     // Get database manager instance
     const dbManager = DatabaseManager_1.DatabaseManager.getInstance();
     if (!dbManager) {
@@ -17,7 +16,6 @@ function setupBudgetHandlers() {
         console.error('Budget repository not initialized');
         throw new Error('Budget repository not initialized');
     }
-    console.log('Budget repository successfully retrieved:', !!budgetRepository);
     // Get all budgets
     electron_1.ipcMain.handle('budgets:getAll', async () => {
         try {
@@ -31,10 +29,7 @@ function setupBudgetHandlers() {
     // Get all budgets with category information
     electron_1.ipcMain.handle('budgets:getAllWithCategories', async () => {
         try {
-            console.log('Handling IPC call: budgets:getAllWithCategories');
-            const result = budgetRepository.getAllWithCategories();
-            console.log('Result from getAllWithCategories:', result ? `${result.length} budgets found` : 'No results');
-            return result;
+            return budgetRepository.getAllWithCategories();
         }
         catch (error) {
             console.error('Error getting all budgets with categories:', error);
@@ -104,10 +99,7 @@ function setupBudgetHandlers() {
     // Get budget progress
     electron_1.ipcMain.handle('budgets:getBudgetProgress', async (_, date) => {
         try {
-            console.log('Handling IPC call: budgets:getBudgetProgress', date);
-            const result = budgetRepository.getBudgetProgress(date);
-            console.log('Result from getBudgetProgress:', result ? `${result.length} budget progresses found` : 'No results');
-            return result;
+            return budgetRepository.getBudgetProgress(date);
         }
         catch (error) {
             console.error('Error getting budget progress:', error);
@@ -148,4 +140,3 @@ function setupBudgetHandlers() {
         }
     });
 }
-//# sourceMappingURL=budgetHandlers.js.map

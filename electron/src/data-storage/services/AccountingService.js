@@ -63,6 +63,10 @@ class AccountingService {
             if (!originalTransaction) {
                 throw new Error('Transaction not found');
             }
+            if (this.isTransferTransaction(originalTransaction) ||
+                this.isTransferTransaction(transaction)) {
+                throw new Error('Transfers cannot be edited individually. Delete and recreate the transfer instead.');
+            }
             // Handle payee creation/assignment if needed
             if (transaction.payee_name && !transaction.payee_id) {
                 // Try to find existing payee by name
@@ -108,6 +112,9 @@ class AccountingService {
             const transaction = transactionRepo.getById(transactionId);
             if (!transaction) {
                 return false;
+            }
+            if (this.isTransferTransaction(transaction)) {
+                return this.deleteTransferTransactions(transaction);
             }
             // Reverse the transaction's effects
             this.reverseTransaction(transaction);
@@ -188,6 +195,7 @@ class AccountingService {
                 amount: -transferAmount,
                 description: description || `Transfer to ${toAccount.name}`,
                 transaction_type: Transaction_1.TransactionType.TRANSFER,
+                transaction_subtype: Transaction_1.TransactionSubtype.INTERNAL_TRANSFER,
                 status: 'cleared'
             };
             // Create "to" transaction (incoming transfer)
@@ -197,10 +205,17 @@ class AccountingService {
                 amount: transferAmount,
                 description: description || `Transfer from ${fromAccount.name}`,
                 transaction_type: Transaction_1.TransactionType.TRANSFER,
+                transaction_subtype: Transaction_1.TransactionSubtype.INTERNAL_TRANSFER,
                 status: 'cleared'
             };
             const fromTransactionId = transactionRepo.create(fromTransaction);
             const toTransactionId = transactionRepo.create(toTransaction);
+            transactionRepo.update(fromTransactionId, {
+                linked_transaction_id: toTransactionId
+            });
+            transactionRepo.update(toTransactionId, {
+                linked_transaction_id: fromTransactionId
+            });
             // Create journal entries for the transfer
             this.journalEntryRepository.createDoubleEntry(fromTransactionId, toAccountId, // Debit destination account
             fromAccountId, // Credit source account
@@ -252,6 +267,65 @@ class AccountingService {
             accountRepo.updateBalance(transaction.account_id, newBalance);
         }
     }
+    isTransferTransaction(transaction) {
+        if (!transaction) {
+            return false;
+        }
+        return (transaction.transaction_type === Transaction_1.TransactionType.TRANSFER ||
+            transaction.transaction_subtype === Transaction_1.TransactionSubtype.INTERNAL_TRANSFER ||
+            typeof transaction.linked_transaction_id === 'number');
+    }
+    findTransferPair(transaction) {
+        const dbManager = DatabaseManager_1.DatabaseManager.getInstance();
+        const transactionRepo = dbManager.getTransactionRepository();
+        const db = DatabaseConnection_1.DatabaseConnection.getInstance();
+        if (typeof transaction.linked_transaction_id === 'number') {
+            return transactionRepo.getById(transaction.linked_transaction_id);
+        }
+        if (!transaction.transaction_id) {
+            return null;
+        }
+        const pairRow = db.prepare(`
+      SELECT t.*, p.name as payee_name, c.name as category_name
+      FROM transactions t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      WHERE t.transaction_id != ?
+        AND t.transaction_type = ?
+        AND t.account_id != ?
+        AND t.date = ?
+        AND t.amount = ?
+      ORDER BY ABS(t.transaction_id - ?) ASC
+      LIMIT 1
+    `).get(transaction.transaction_id, Transaction_1.TransactionType.TRANSFER, transaction.account_id, transaction.date, -transaction.amount, transaction.transaction_id);
+        return pairRow || null;
+    }
+    deleteTransferTransactions(transaction) {
+        const dbManager = DatabaseManager_1.DatabaseManager.getInstance();
+        const transactionRepo = dbManager.getTransactionRepository();
+        const pair = this.findTransferPair(transaction);
+        const transactionIds = new Set();
+        const accountIds = new Set();
+        if (transaction.transaction_id) {
+            transactionIds.add(transaction.transaction_id);
+        }
+        accountIds.add(transaction.account_id);
+        if (pair?.transaction_id) {
+            transactionIds.add(pair.transaction_id);
+            accountIds.add(pair.account_id);
+        }
+        for (const id of transactionIds) {
+            this.journalEntryRepository.deleteByTransactionId(id);
+        }
+        let deletedAny = false;
+        for (const id of transactionIds) {
+            deletedAny = transactionRepo.delete(id) || deletedAny;
+        }
+        for (const accountId of accountIds) {
+            this.updateAccountBalance(accountId);
+        }
+        return deletedAny;
+    }
     /**
      * Initialize accounting system and migrate any existing placeholder accounts
      * This should be called once during application startup
@@ -281,4 +355,3 @@ class AccountingService {
     }
 }
 exports.AccountingService = AccountingService;
-//# sourceMappingURL=AccountingService.js.map

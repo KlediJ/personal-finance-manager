@@ -258,14 +258,12 @@ class TransactionCategorizationService {
         this.CONFIDENCE_FUZZY_MATCH = 0.7;
         this.CONFIDENCE_WEAK_MATCH = 0.6;
         this.CONFIDENCE_LOW = 0.5;
-        console.log('TransactionCategorizationService initialized (Rule-Based, Phase 1)');
     }
     /**
      * Categorize a single transaction
      */
     async processTransaction(transaction, availableCategories, existingPayees) {
         const description = transaction.description || '';
-        console.log(`Categorizing transaction: "${description}"`);
         // Extract payee/merchant information
         const payeeExtraction = this.extractPayeeInfo(description, existingPayees);
         // Predict category
@@ -693,12 +691,6 @@ class TransactionCategorizationService {
      * Learn from user correction (for future enhancement)
      */
     learnFromCorrection(transaction, correctCategory, correctPayee) {
-        // Phase 1: Log for future analysis
-        console.log('User correction received:', {
-            description: transaction.description,
-            category: correctCategory.name,
-            payee: correctPayee?.name
-        });
         // Phase 2+: Implement learning mechanism
         // - Store corrections in database
         // - Update pattern weights
@@ -706,4 +698,3 @@ class TransactionCategorizationService {
     }
 }
 exports.TransactionCategorizationService = TransactionCategorizationService;
-//# sourceMappingURL=TransactionCategorizationService.js.map

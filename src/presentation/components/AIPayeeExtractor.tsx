@@ -65,20 +65,7 @@ const AIPayeeExtractor: React.FC<AIPayeeExtractorProps> = ({
           setError(result.message || result.error || 'Failed to extract payee');
         }
       } else {
-        // Mock extraction for development
-        const mockPayee: Payee = {
-          name: transaction.description?.split(' ')[0] || 'Unknown Merchant',
-          default_category_id: null
-        };
-        
-        setExtractionResult({
-          payee: mockPayee,
-          confidence: 0.85,
-          categoryPredictions: [
-            { category: { category_id: 1, name: 'Food & Dining' }, confidence: 0.85 }
-          ]
-        });
-        setShowConfirmDialog(true);
+        setError('AI payee extraction is not available in this build.');
       }
     } catch (error) {
       console.error('Error extracting payee:', error);

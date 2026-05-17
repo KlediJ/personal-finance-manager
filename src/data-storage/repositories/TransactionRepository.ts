@@ -22,7 +22,8 @@ export class TransactionRepository extends BaseRepository<Transaction> {
       created_at: row.created_at,
       updated_at: row.updated_at,
       // Credit Card Transaction Logic enhancements - Phase 2
-      transaction_subtype: row.transaction_subtype as TransactionSubtype
+      transaction_subtype: row.transaction_subtype as TransactionSubtype,
+      linked_transaction_id: row.linked_transaction_id
     };
   }
   

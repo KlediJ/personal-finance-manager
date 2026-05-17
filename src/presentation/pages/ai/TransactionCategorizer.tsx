@@ -40,6 +40,7 @@ import {
 } from '@mui/icons-material';
 import { Transaction } from '../../../data-storage/models/Transaction';
 import { Category } from '../../../data-storage/models/Category';
+import TextField from '@mui/material/TextField';
 
 interface TransactionCategorizerProps {
   aiStatus: 'loading' | 'ready' | 'error';
@@ -52,6 +53,7 @@ interface UncategorizedTransaction extends Transaction {
   confidence?: number;
   payeeConfidence?: number;
   isEditing?: boolean;
+  rationale?: string | null;
   extractedInfo?: {
     merchant?: string;
     location?: string;
@@ -80,6 +82,7 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
     payeeId?: number | null;
   }>({ transaction: null, categoryId: null, payeeId: null });
   const [scopeChoice, setScopeChoice] = useState<'INSTANCE' | 'MERCHANT' | 'MERCHANT_AMOUNT'>('INSTANCE');
+  const [payeeEdits, setPayeeEdits] = useState<Record<number, string>>({});
 
   useEffect(() => {
     loadUncategorizedTransactions();
@@ -252,6 +255,7 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                 suggestedPayee: suggestedPayeeName,
                 suggestedPayeeId: suggestedPayeeId,
                 payeeConfidence: payeeExtraction?.confidence,
+                rationale: aiResult.rationale ?? null,
                 extractedInfo: aiResult.extractedInfo
               } as UncategorizedTransaction;
             }
@@ -271,6 +275,32 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
       // Fallback to mock categorization
       console.log('Exception occurred, falling back to mock categorization');
       await runMockCategorization();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const applyHighConfidenceSuggestions = async () => {
+    if (isProcessing) return;
+    const highConfidence = uncategorizedTransactions.filter(
+      (t) => t.suggestedCategory && (t.confidence ?? 0) >= 0.9
+    );
+
+    if (highConfidence.length === 0) {
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      for (const tx of highConfidence) {
+        await directApproveCategory(
+          tx.transaction_id!,
+          tx.suggestedCategory!.category_id!,
+          tx.suggestedPayeeId ?? undefined
+        );
+      }
+    } catch (error) {
+      console.error('Error applying high-confidence suggestions:', error);
     } finally {
       setIsProcessing(false);
     }
@@ -557,7 +587,7 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
       </Grid>
 
       {/* Action Bar */}
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <Button
           variant="contained"
           startIcon={isProcessing ? <AutoFixIcon /> : <PlayIcon />}
@@ -565,6 +595,13 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
           disabled={aiStatus !== 'ready' || isProcessing || uncategorizedTransactions.length === 0}
         >
           {isProcessing ? 'Applying rules...' : 'Run Smart Categorization'}
+        </Button>
+        <Button
+          variant="outlined"
+          onClick={applyHighConfidenceSuggestions}
+          disabled={isProcessing || uncategorizedTransactions.length === 0}
+        >
+          Apply 90% Suggestions
         </Button>
         
         <Typography variant="body2" color="text.secondary">
@@ -592,6 +629,7 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                 <TableCell>Description</TableCell>
                 <TableCell align="right">Amount</TableCell>
                 <TableCell>AI Category</TableCell>
+                <TableCell>Why</TableCell>
                 <TableCell>AI Payee</TableCell>
                 <TableCell>Confidence</TableCell>
                 <TableCell>Actions</TableCell>
@@ -609,55 +647,105 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                   <TableCell align="right">
                     {formatAmount(transaction.amount)}
                   </TableCell>
-                  <TableCell>
-                    {transaction.isEditing ? (
-                      <FormControl size="small" sx={{ minWidth: 150 }}>
-                        <Select
-                          value=""
-                          displayEmpty
-                          onChange={(e) => handleSaveManualCategory(transaction.transaction_id!, Number(e.target.value))}
-                        >
-                          <MenuItem value="" disabled>
-                            <em>Select Category</em>
+                <TableCell>
+                  {transaction.isEditing ? (
+                    <FormControl size="small" sx={{ minWidth: 150 }}>
+                      <Select
+                        value=""
+                        displayEmpty
+                        onChange={(e) => handleSaveManualCategory(transaction.transaction_id!, Number(e.target.value))}
+                      >
+                        <MenuItem value="" disabled>
+                          <em>Select Category</em>
+                        </MenuItem>
+                        {categories.map((category) => (
+                          <MenuItem key={category.category_id} value={category.category_id}>
+                            {category.name}
                           </MenuItem>
-                          {categories.map((category) => (
-                            <MenuItem key={category.category_id} value={category.category_id}>
-                              {category.name}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    ) : transaction.suggestedCategory ? (
-                      <Chip
-                        label={transaction.suggestedCategory.name}
-                        color="primary"
-                        variant="outlined"
-                        size="small"
-                      />
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : transaction.suggestedCategory ? (
+                    <Chip
+                      label={transaction.suggestedCategory.name}
+                      color="primary"
+                      variant="outlined"
+                      size="small"
+                    />
                     ) : (
                       <Typography variant="body2" color="text.secondary">
                         No suggestion
                       </Typography>
                     )}
-                  </TableCell>
-                  <TableCell>
-                    {transaction.suggestedPayee ? (
+                </TableCell>
+                <TableCell>
+                  {transaction.rationale ? (
+                    <Chip label={transaction.rationale} size="small" variant="outlined" />
+                  ) : (
+                    <Typography variant="body2" color="text.secondary"></Typography>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {transaction.suggestedPayee ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Chip
                         label={transaction.suggestedPayee}
                         color="secondary"
                         variant="outlined"
                         size="small"
                       />
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No payee
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                      {transaction.confidence ? (
-                        <Chip
+                      <IconButton
+                        size="small"
+                        onClick={() =>
+                          setPayeeEdits((prev) => ({
+                            ...prev,
+                            [transaction.transaction_id!]:
+                              (prev[transaction.transaction_id!] ?? transaction.suggestedPayee) || ''
+                          }))
+                        }
+                        title="Edit payee"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No payee
+                    </Typography>
+                  )}
+                  {payeeEdits[transaction.transaction_id!] !== undefined && (
+                    <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <TextField
+                        size="small"
+                        label="Payee"
+                        value={payeeEdits[transaction.transaction_id!] ?? ''}
+                        onChange={(e) =>
+                          setPayeeEdits((prev) => ({
+                            ...prev,
+                            [transaction.transaction_id!]: e.target.value
+                          }))
+                        }
+                      />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() =>
+                          handleCreateAndApprovePayee(
+                            transaction.transaction_id!,
+                            payeeEdits[transaction.transaction_id!] || transaction.suggestedPayee || '',
+                            transaction.suggestedCategory?.category_id
+                          )
+                        }
+                      >
+                        Save Payee & Approve
+                      </Button>
+                    </Box>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {transaction.confidence ? (
+                      <Chip
                           label={`Cat: ${Math.round(transaction.confidence * 100)}%`}
                           color={getConfidenceColor(transaction.confidence)}
                           variant="outlined"
@@ -712,7 +800,7 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
                               sx={{ minWidth: 'auto', fontSize: '0.75rem', px: 1 }}
                               title={transaction.suggestedPayeeId ? "Approve Category & Existing Payee" : "Create Payee & Approve Both"}
                             >
-                              ✓ Both
+                              Approve Both
                             </Button>
                           )}
                           <IconButton
@@ -800,3 +888,9 @@ const TransactionCategorizer: React.FC<TransactionCategorizerProps> = ({ aiStatu
 };
 
 export default TransactionCategorizer;
+
+
+
+
+
+

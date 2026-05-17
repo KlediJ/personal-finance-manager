@@ -135,6 +135,85 @@ export function setupTransactionHandlers(): void {
     }
   });
 
+  // Bulk delete transactions with per-transaction accounting cleanup.
+  ipcMain.handle('transactions:bulkDelete', async (_, ids: number[]) => {
+    try {
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return { success: false, count: 0, error: 'No transaction IDs provided' };
+      }
+
+      const uniqueIds = [...new Set(ids.filter((id): id is number => Number.isInteger(id) && id > 0))];
+
+      if (uniqueIds.length === 0) {
+        return { success: false, count: 0, error: 'No valid transaction IDs provided' };
+      }
+
+      let count = 0;
+      const errors: Array<{ id: number; error: string }> = [];
+      const handledIds = new Set<number>();
+
+      for (const id of uniqueIds) {
+        if (handledIds.has(id)) {
+          count++;
+          continue;
+        }
+
+        try {
+          const transaction = transactionRepository.getById(id);
+
+          if (!transaction) {
+            // If the row is already gone by the time we reach it, treat it as
+            // already handled. This commonly happens when both sides of a
+            // transfer were selected and the first delete removed the pair.
+            count++;
+            handledIds.add(id);
+            continue;
+          }
+
+          const success = accountingService.deleteTransaction(id);
+          if (success) {
+            count++;
+            handledIds.add(id);
+
+            if (
+              transaction.transaction_type === 'transfer' &&
+              typeof transaction.linked_transaction_id === 'number'
+            ) {
+              handledIds.add(transaction.linked_transaction_id);
+            }
+          } else {
+            errors.push({ id, error: 'Transaction not found or could not be deleted' });
+          }
+        } catch (error) {
+          errors.push({
+            id,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+
+      if (errors.length > 0) {
+        return {
+          success: false,
+          partialSuccess: count > 0,
+          count,
+          totalCount: uniqueIds.length,
+          errors,
+          error: errors[0].error
+        };
+      }
+
+      return { success: true, count, totalCount: uniqueIds.length };
+    } catch (error) {
+      console.error('Error bulk deleting transactions:', error);
+      return {
+        success: false,
+        count: 0,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  });
+
   // Get monthly activity with basic summaries
   ipcMain.handle('transactions:getMonthlyActivity', async (_, month: string, accountId?: number) => {
     try {
@@ -202,6 +281,47 @@ export function setupTransactionHandlers(): void {
     } catch (error) {
       console.error('Error recalculating balances:', error);
       throw error;
+    }
+  });
+
+  // Bulk-assign a payee to multiple transactions.
+  ipcMain.handle('transactions:bulkAssignPayee', async (_, transactionIds: number[], payeeId: number) => {
+    try {
+      if (!Array.isArray(transactionIds) || transactionIds.length === 0) {
+        return { success: false, count: 0, error: 'No transaction IDs provided' };
+      }
+
+      const uniqueIds = [...new Set(
+        transactionIds.filter((id): id is number => Number.isInteger(id) && id > 0)
+      )];
+
+      if (uniqueIds.length === 0) {
+        return { success: false, count: 0, error: 'No valid transaction IDs provided' };
+      }
+
+      const payeeRepository = DatabaseManager.getInstance().getPayeeRepository();
+      const payee = payeeRepository.getById(payeeId);
+      if (!payee) {
+        return { success: false, count: 0, error: 'Payee not found' };
+      }
+
+      const db = DatabaseConnection.getInstance();
+      const placeholders = uniqueIds.map(() => '?').join(', ');
+      const statement = db.prepare(`
+        UPDATE transactions
+        SET payee_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE transaction_id IN (${placeholders})
+      `);
+
+      const result = statement.run(payeeId, ...uniqueIds);
+      return { success: true, count: result.changes };
+    } catch (error) {
+      console.error('Error bulk assigning payee:', error);
+      return {
+        success: false,
+        count: 0,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
     }
   });
 

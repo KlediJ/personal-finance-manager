@@ -7,6 +7,7 @@ import {
   CircularProgress,
   Button,
   Chip,
+  Alert,
   Select,
   MenuItem,
   useTheme
@@ -15,9 +16,9 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import { useNavigate } from 'react-router-dom';
 import CategoryBreakdown from './charts/CategoryBreakdown';
+import MonthlySpendingSankey from './charts/MonthlySpendingSankey';
 import PayeeSummary from './PayeeSummary';
 import CategorySummary from './CategorySummary';
 
@@ -99,7 +100,6 @@ const DashboardPage: React.FC = () => {
         currentMonthStart,
         currentMonthEnd
       );
-      console.log('Dashboard month transactions:', monthTransactions);
 
       const accountFilteredMonthTx =
         selectedAccountId === 'all'
@@ -144,7 +144,6 @@ const DashboardPage: React.FC = () => {
       
       // Process payee breakdown
       const payeeData = processPayeeData(rangeTx);
-      console.log('Dashboard payee data:', payeeData);
       setPayeeSummary(payeeData);
 
       // Derive recent transactions from the filtered month range
@@ -242,6 +241,16 @@ const DashboardPage: React.FC = () => {
       : 0;
 
   const monthLabel = getMonthLabelFromKey(selectedMonthKey);
+  const buildSankeyDrilldownUrl = (params: Record<string, string>) => {
+    const search = new URLSearchParams({
+      sankeyMonth: selectedMonthKey,
+      sankeyAccount:
+        selectedAccountId === 'all' ? 'all' : String(selectedAccountId),
+      ...params
+    });
+
+    return `/transactions?${search.toString()}`;
+  };
 
   const pivotData = useMemo(() => {
     if (!rangeTransactions || rangeTransactions.length === 0) {
@@ -330,13 +339,6 @@ const DashboardPage: React.FC = () => {
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button 
             variant="outlined" 
-            startIcon={<MonetizationOnIcon />}
-            onClick={() => navigate('/budget')}
-          >
-            Budget
-          </Button>
-          <Button 
-            variant="outlined" 
             startIcon={<RefreshIcon />}
             onClick={loadDashboardData}
             disabled={loading}
@@ -361,8 +363,28 @@ const DashboardPage: React.FC = () => {
             Try Again
           </Button>
         </Paper>
+      ) : accounts.length === 0 ? (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6" gutterBottom>
+            Start by creating your first account
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 3 }}>
+            Libri needs at least one account before you can track balances, import transactions, or use the ledger.
+          </Typography>
+          <Button variant="contained" onClick={() => navigate('/accounts')}>
+            Go to Accounts
+          </Button>
+        </Paper>
       ) : (
         <Grid container spacing={3}>
+          {rangeTransactions.length === 0 && (
+            <Grid item xs={12}>
+              <Alert severity="info">
+                No transactions were found for the selected month and account filter yet.
+              </Alert>
+            </Grid>
+          )}
+
           {/* Summary Cards Row */}
           <Grid item xs={12} md={3}>
             <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
@@ -481,6 +503,40 @@ const DashboardPage: React.FC = () => {
                   </Typography>
                 </Box>
               </Box>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Paper sx={{ p: 2.5 }}>
+              <Typography variant="h6" gutterBottom>
+                Monthly Spending Flow
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Follow this month&apos;s expense flow from categories into merchants for the selected account filter.
+              </Typography>
+              <MonthlySpendingSankey
+                transactions={rangeTransactions}
+                onCategoryClick={(categoryName) =>
+                  navigate(
+                    categoryName === 'Other categories'
+                      ? buildSankeyDrilldownUrl({ categoryRollup: 'other' })
+                      : buildSankeyDrilldownUrl({
+                          category: categoryName
+                        })
+                  )
+                }
+                onMerchantClick={(merchantName) =>
+                  navigate(
+                    merchantName === 'Other merchants'
+                      ? buildSankeyDrilldownUrl({ payeeRollup: 'other' })
+                      : merchantName === 'No payee'
+                        ? buildSankeyDrilldownUrl({ payeeRollup: 'none' })
+                        : buildSankeyDrilldownUrl({
+                            payee: merchantName
+                          })
+                  )
+                }
+              />
             </Paper>
           </Grid>
 

@@ -16,7 +16,7 @@ declare global {
         getById: (id: number) => Promise<Account | null>;
         create: (account: Account) => Promise<{ id: number, success: boolean }>;
         update: (id: number, account: Account) => Promise<{ success: boolean }>;
-        delete: (id: number) => Promise<{ success: boolean }>;
+        delete: (id: number) => Promise<{ success: boolean, error?: string }>;
         getTotalBalance: () => Promise<number>;
         getDetails: (accountId: number) => Promise<any | null>;
         saveDetails: (details: any) => Promise<{ success: boolean; error?: string }>;
@@ -69,21 +69,12 @@ declare global {
         getParents: () => Promise<Category[]>;
         getSubcategories: (parentId: number) => Promise<Category[]>;
         getHierarchy: () => Promise<{[key: number]: {category: Category, subcategories: Category[]}}>;
-        create: (category: Category) => Promise<{ id: number, success: boolean }>;
-        update: (id: number, category: Category) => Promise<{ success: boolean }>;
-        delete: (id: number) => Promise<{ success: boolean }>;
+        create: (category: Category) => Promise<{ id?: number, success: boolean, error?: string }>;
+        update: (id: number, category: Category) => Promise<{ success: boolean, error?: string }>;
+        delete: (id: number) => Promise<{ success: boolean, error?: string }>;
+        bulkDelete: (ids: number[]) => Promise<{ success: boolean, deletedCount: number, error?: string }>;
       };
 
-      debug: {
-        getCategories: () => Promise<Array<{
-          category_id: number;
-          name: string;
-          type: string;
-          parent_category_id: number | null;
-        }>>;
-        migrateCategories: () => Promise<{ success: boolean; changes?: { renamed: Array<{ from: string; to: string; id: number }>; inserted: Array<{ name: string; type: string; id: number }> }; error?: string }>;
-        seedFeedbackFromWF: () => Promise<{ success: boolean; inserted?: number; skippedNoCategory?: number; error?: string }>;
-      };
       payees: {
         getAll: () => Promise<Payee[]>;
         getById: (id: number) => Promise<Payee | null>;

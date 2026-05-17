@@ -6,10 +6,11 @@ const DatabaseManager_1 = require("../../src/data-storage/database/DatabaseManag
 const DatabaseConnection_1 = require("../../src/data-storage/database/DatabaseConnection");
 function setupAccountHandlers() {
     const accountRepository = DatabaseManager_1.DatabaseManager.getInstance().getAccountRepository();
+    const isUserVisibleAccount = (account) => !account.is_virtual && !(account.account_code || '').startsWith('V-');
     // Get all accounts
     electron_1.ipcMain.handle('accounts:getAll', async () => {
         try {
-            return accountRepository.getAll();
+            return accountRepository.getAll().filter(isUserVisibleAccount);
         }
         catch (error) {
             console.error('Error getting all accounts:', error);
@@ -19,7 +20,7 @@ function setupAccountHandlers() {
     // Get active accounts
     electron_1.ipcMain.handle('accounts:getActive', async () => {
         try {
-            return accountRepository.getActiveAccounts();
+            return accountRepository.getActiveAccounts().filter(isUserVisibleAccount);
         }
         catch (error) {
             console.error('Error getting active accounts:', error);
@@ -66,13 +67,53 @@ function setupAccountHandlers() {
         }
         catch (error) {
             console.error(`Error deleting account ${id}:`, error);
-            throw error;
+            const db = DatabaseConnection_1.DatabaseConnection.getInstance();
+            const transactionCountRow = db
+                .prepare('SELECT COUNT(*) as count FROM transactions WHERE account_id = ?')
+                .get(id);
+            const recurringBillCountRow = db
+                .prepare('SELECT COUNT(*) as count FROM recurring_bills WHERE account_id = ?')
+                .get(id);
+            const interestCountRow = db
+                .prepare('SELECT COUNT(*) as count FROM interest_expenses WHERE account_id = ?')
+                .get(id);
+            if (error.message.toLowerCase().includes('foreign key')) {
+                if ((transactionCountRow?.count || 0) > 0) {
+                    return {
+                        success: false,
+                        error: 'This account still has transactions. Delete or move those transactions before deleting the account.'
+                    };
+                }
+                if ((recurringBillCountRow?.count || 0) > 0) {
+                    return {
+                        success: false,
+                        error: 'This account is still used by recurring bills. Remove those references before deleting the account.'
+                    };
+                }
+                if ((interestCountRow?.count || 0) > 0) {
+                    return {
+                        success: false,
+                        error: 'This account is still referenced by interest records and cannot be deleted yet.'
+                    };
+                }
+                return {
+                    success: false,
+                    error: 'This account is still referenced elsewhere and cannot be deleted yet.'
+                };
+            }
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
         }
     });
     // Get total balance
     electron_1.ipcMain.handle('accounts:getTotalBalance', async () => {
         try {
-            return accountRepository.getTotalBalance();
+            return accountRepository
+                .getAll()
+                .filter(isUserVisibleAccount)
+                .reduce((sum, account) => sum + account.current_balance, 0);
         }
         catch (error) {
             console.error('Error getting total balance:', error);
@@ -123,4 +164,3 @@ function setupAccountHandlers() {
         }
     });
 }
-//# sourceMappingURL=accountHandlers.js.map

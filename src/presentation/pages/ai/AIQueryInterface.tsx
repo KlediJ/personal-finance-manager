@@ -44,6 +44,7 @@ const AIQueryInterface: React.FC<AIQueryInterfaceProps> = ({ aiStatus }) => {
   const [query, setQuery] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [queryHistory, setQueryHistory] = useState<QueryResult[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const suggestedQueries = [
@@ -62,27 +63,6 @@ const AIQueryInterface: React.FC<AIQueryInterfaceProps> = ({ aiStatus }) => {
       text: "Show me my largest expenses this month",
       icon: <AccountBalanceIcon />,
       category: "Financial Query"
-    },
-    // Chatbot/General AI tests
-    {
-      text: "Hello, how are you today?",
-      icon: <LightbulbIcon />,
-      category: "Chatbot Test"
-    },
-    {
-      text: "What is the capital of France?",
-      icon: <LightbulbIcon />,
-      category: "General Knowledge"
-    },
-    {
-      text: "Explain quantum physics in simple terms",
-      icon: <LightbulbIcon />,
-      category: "Complex Reasoning"
-    },
-    {
-      text: "Write a short poem about money",
-      icon: <LightbulbIcon />,
-      category: "Creative Writing"
     },
     {
       text: "Help me categorize this transaction: 'WALMART SUPERCENTER #1234 GROCERIES $45.67'",
@@ -103,24 +83,20 @@ const AIQueryInterface: React.FC<AIQueryInterfaceProps> = ({ aiStatus }) => {
     if (!query.trim() || aiStatus !== 'ready') return;
     
     setIsProcessing(true);
+    setErrorMessage(null);
     const userQuery = query.trim();
     setQuery('');
 
     try {
-      // Check if AI API is available
       if (!window.api || !window.api.ai || !window.api.ai.processQuery) {
-        console.log('AI API not available, using mock query processing');
-        // Fallback to mock processing
-        const mockResponse = await processQuery(userQuery);
-        const queryResult: QueryResult = {
+        const unavailableMessage = 'Natural-language AI queries are not available in this build.';
+        setErrorMessage(unavailableMessage);
+        setQueryHistory(prev => [...prev, {
           query: userQuery,
-          response: mockResponse.text,
-          data: mockResponse.data,
+          response: unavailableMessage,
           timestamp: new Date(),
-          type: mockResponse.type
-        };
-        
-        setQueryHistory(prev => [...prev, queryResult]);
+          type: 'text'
+        }]);
         return;
       }
       
@@ -138,23 +114,23 @@ const AIQueryInterface: React.FC<AIQueryInterfaceProps> = ({ aiStatus }) => {
         
         setQueryHistory(prev => [...prev, queryResult]);
       } else {
-        // Fallback to mock processing
-        const mockResponse = await processQuery(userQuery);
+        const failureMessage = result.error || 'Natural-language AI queries are not available in this build.';
+        setErrorMessage(failureMessage);
         const queryResult: QueryResult = {
           query: userQuery,
-          response: mockResponse.text,
-          data: mockResponse.data,
+          response: failureMessage,
           timestamp: new Date(),
-          type: mockResponse.type
+          type: 'text'
         };
-        
+
         setQueryHistory(prev => [...prev, queryResult]);
       }
     } catch (error) {
       console.error('Error processing query:', error);
+      setErrorMessage('Natural-language AI queries are currently unavailable.');
       const errorResult: QueryResult = {
         query: userQuery,
-        response: 'Sorry, I encountered an error processing your query. Please try again.',
+        response: 'Natural-language AI queries are currently unavailable.',
         timestamp: new Date(),
         type: 'text'
       };
@@ -162,107 +138,6 @@ const AIQueryInterface: React.FC<AIQueryInterfaceProps> = ({ aiStatus }) => {
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const processQuery = async (userQuery: string): Promise<{text: string, data?: any, type: 'text' | 'chart' | 'table' | 'summary'}> => {
-    // Simulate AI processing delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const query = userQuery.toLowerCase();
-    
-    // Mock query processing based on patterns
-    if (query.includes('spend') && query.includes('month')) {
-      return {
-        text: "Based on your transactions, you spent $2,456 last month across all categories. Here's the breakdown:",
-        data: {
-          categories: [
-            { name: 'Food & Dining', amount: 856 },
-            { name: 'Transportation', amount: 342 },
-            { name: 'Shopping', amount: 689 },
-            { name: 'Bills & Utilities', amount: 234 },
-            { name: 'Entertainment', amount: 335 }
-          ]
-        },
-        type: 'summary'
-      };
-    }
-    
-    if (query.includes('income') && query.includes('year')) {
-      return {
-        text: "Your total income for this year is $45,600. This includes salary, freelance work, and other income sources.",
-        data: {
-          totalIncome: 45600,
-          sources: [
-            { name: 'Salary', amount: 42000 },
-            { name: 'Freelance', amount: 3200 },
-            { name: 'Other', amount: 400 }
-          ]
-        },
-        type: 'summary'
-      };
-    }
-    
-    if (query.includes('largest expenses')) {
-      return {
-        text: "Here are your largest expenses this month:",
-        data: {
-          expenses: [
-            { description: 'Rent Payment', amount: 1200, date: '2024-01-01' },
-            { description: 'Car Payment', amount: 350, date: '2024-01-05' },
-            { description: 'Grocery Shopping', amount: 145, date: '2024-01-10' },
-            { description: 'Utilities', amount: 120, date: '2024-01-15' },
-            { description: 'Insurance', amount: 85, date: '2024-01-20' }
-          ]
-        },
-        type: 'table'
-      };
-    }
-    
-    if (query.includes('trend')) {
-      return {
-        text: "Your spending trend over the last 6 months shows a slight increase, primarily due to higher spending on dining and entertainment.",
-        data: {
-          months: ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'],
-          spending: [2100, 2300, 2150, 2400, 2650, 2456]
-        },
-        type: 'chart'
-      };
-    }
-    
-    if (query.includes('overspending')) {
-      return {
-        text: "Based on your budget, you're overspending in these categories:",
-        data: {
-          overspending: [
-            { category: 'Food & Dining', budgeted: 600, actual: 856, over: 256 },
-            { category: 'Entertainment', budgeted: 200, actual: 335, over: 135 },
-            { category: 'Shopping', budgeted: 500, actual: 689, over: 189 }
-          ]
-        },
-        type: 'table'
-      };
-    }
-    
-    if (query.includes('above') && query.includes('100')) {
-      return {
-        text: "Here are all transactions above $100 from the last 30 days:",
-        data: {
-          transactions: [
-            { description: 'Rent Payment', amount: 1200, date: '2024-01-01' },
-            { description: 'Car Payment', amount: 350, date: '2024-01-05' },
-            { description: 'Grocery Shopping', amount: 145, date: '2024-01-10' },
-            { description: 'Utilities', amount: 120, date: '2024-01-15' }
-          ]
-        },
-        type: 'table'
-      };
-    }
-    
-    // Default response
-    return {
-      text: "I understand you're asking about your finances. I can help you analyze spending patterns, income trends, budget performance, and find specific transactions. Try asking about your spending in specific categories or time periods.",
-      type: 'text'
-    };
   };
 
   const handleSuggestedQuery = (suggestedQuery: string) => {
@@ -445,6 +320,12 @@ const AIQueryInterface: React.FC<AIQueryInterfaceProps> = ({ aiStatus }) => {
         </Box>
       )}
 
+      {errorMessage && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {errorMessage}
+        </Alert>
+      )}
+
       {/* Input Area */}
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
         <TextField
@@ -484,7 +365,7 @@ const AIQueryInterface: React.FC<AIQueryInterfaceProps> = ({ aiStatus }) => {
       
       {aiStatus !== 'ready' && (
         <Alert severity="warning" sx={{ mt: 1 }}>
-          AI Assistant is not ready. Please wait for the model to load.
+          Natural-language AI queries are not available in this release build.
         </Alert>
       )}
     </Box>

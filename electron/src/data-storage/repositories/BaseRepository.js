@@ -7,6 +7,37 @@ class BaseRepository {
         this.tableName = tableName;
         this.db = DatabaseConnection_1.DatabaseConnection.getInstance();
     }
+    getDefaultIdField() {
+        if (this.tableName.endsWith('ies')) {
+            return `${this.tableName.slice(0, -3)}y_id`;
+        }
+        if (this.tableName.endsWith('s')) {
+            return `${this.tableName.slice(0, -1)}_id`;
+        }
+        return `${this.tableName}_id`;
+    }
+    getTableColumns() {
+        if (!this.tableColumns) {
+            const columns = this.db
+                .prepare(`PRAGMA table_info(${this.tableName})`)
+                .all();
+            this.tableColumns = new Set(columns.map((column) => column.name));
+        }
+        return this.tableColumns;
+    }
+    normalizeSqlValue(value) {
+        if (typeof value === 'boolean') {
+            return value ? 1 : 0;
+        }
+        return value;
+    }
+    sanitizeData(data) {
+        const tableColumns = this.getTableColumns();
+        return Object.fromEntries(Object.entries(data)
+            .filter(([key]) => tableColumns.has(key))
+            .filter(([, value]) => value !== undefined)
+            .map(([key, value]) => [key, this.normalizeSqlValue(value)]));
+    }
     /**
      * Get all records from the table
      */
@@ -18,7 +49,7 @@ class BaseRepository {
     /**
      * Get a record by its ID
      */
-    getById(id, idField = `${this.tableName.slice(0, -1)}_id`) {
+    getById(id, idField = this.getDefaultIdField()) {
         const statement = this.db.prepare(`SELECT * FROM ${this.tableName} WHERE ${idField} = ?`);
         const row = statement.get(id);
         return row ? this.mapToEntity(row) : null;
@@ -26,9 +57,10 @@ class BaseRepository {
     /**
      * Create a new record
      */
-    create(data, idField = `${this.tableName.slice(0, -1)}_id`) {
+    create(data, idField = this.getDefaultIdField()) {
         // Remove any ID field if present (as it's auto-generated)
-        const { [idField]: _, ...insertData } = data;
+        const { [idField]: _, ...rawInsertData } = data;
+        const insertData = this.sanitizeData(rawInsertData);
         // Build the query dynamically based on the data object
         const keys = Object.keys(insertData);
         const placeholders = keys.map(() => '?').join(', ');
@@ -41,9 +73,10 @@ class BaseRepository {
     /**
      * Update an existing record
      */
-    update(id, data, idField = `${this.tableName.slice(0, -1)}_id`) {
+    update(id, data, idField = this.getDefaultIdField()) {
         // Remove any ID field from the update data
-        const { [idField]: _, ...updateData } = data;
+        const { [idField]: _, ...rawUpdateData } = data;
+        const updateData = this.sanitizeData(rawUpdateData);
         // Set updated_at if it exists in the table
         const hasUpdatedAt = this.db.prepare(`PRAGMA table_info(${this.tableName})`).all()
             .some((col) => col.name === 'updated_at');
@@ -61,7 +94,7 @@ class BaseRepository {
     /**
      * Delete a record by its ID
      */
-    delete(id, idField = `${this.tableName.slice(0, -1)}_id`) {
+    delete(id, idField = this.getDefaultIdField()) {
         const statement = this.db.prepare(`DELETE FROM ${this.tableName} WHERE ${idField} = ?`);
         const result = statement.run(id);
         return result.changes > 0;
@@ -92,4 +125,3 @@ class BaseRepository {
     }
 }
 exports.BaseRepository = BaseRepository;
-//# sourceMappingURL=BaseRepository.js.map

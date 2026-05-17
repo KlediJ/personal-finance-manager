@@ -36,4 +36,5 @@ export interface Transaction {
   updated_at?: string;
   // Credit Card Transaction Logic enhancements - Phase 2
   transaction_subtype?: TransactionSubtype;
+  linked_transaction_id?: number | null;
 }

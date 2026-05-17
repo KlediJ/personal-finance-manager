@@ -6,4 +6,3 @@ var JournalEntryType;
     JournalEntryType["DEBIT"] = "debit";
     JournalEntryType["CREDIT"] = "credit";
 })(JournalEntryType || (exports.JournalEntryType = JournalEntryType = {}));
-//# sourceMappingURL=JournalEntry.js.map

@@ -51,7 +51,7 @@ export function setupImportHandlers(): void {
       title: 'Select File to Import',
       filters: [
         { name: 'CSV Files', extensions: ['csv'] },
-        { name: 'Excel Files', extensions: ['xlsx', 'xls'] }
+        { name: 'Excel Files', extensions: ['xlsx'] }
       ],
       properties: ['openFile']
     });
@@ -123,15 +123,16 @@ export function setupImportHandlers(): void {
    */
   ipcMain.handle('import:parseExcel', async (_event, filePath: string): Promise<ExcelParseResult> => {
     try {
-      const workbook = new ExcelJS.Workbook();
-
-      // ExcelJS handles modern xlsx files; we'll still keep the legacy check
-      const isXls = filePath.toLowerCase().endsWith('.xls');
-      if (isXls) {
-        await workbook.xlsx.readFile(filePath);
-      } else {
-        await workbook.xlsx.readFile(filePath);
+      if (filePath.toLowerCase().endsWith('.xls')) {
+        return {
+          success: false,
+          sheets: [],
+          error: 'Legacy .xls files are not supported. Please save the file as .xlsx and try again.'
+        };
       }
+
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
 
       const result: ExcelParseResult = {
         success: true,

@@ -302,4 +302,3 @@ class VirtualAccountManager {
     }
 }
 exports.VirtualAccountManager = VirtualAccountManager;
-//# sourceMappingURL=VirtualAccountManager.js.map

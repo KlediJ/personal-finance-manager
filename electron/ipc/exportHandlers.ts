@@ -1,5 +1,6 @@
 import { ipcMain, dialog } from 'electron';
 import * as fs from 'fs';
+import ExcelJS from 'exceljs';
 import { DatabaseConnection } from '../../src/data-storage/database/DatabaseConnection';
 
 interface ExportOptions {
@@ -30,7 +31,7 @@ export function setupExportHandlers(): void {
       filters:
         format === 'excel'
           ? [
-              { name: 'Excel', extensions: ['xlsx', 'xls', 'csv'] }
+              { name: 'Excel Workbook', extensions: ['xlsx'] }
             ]
           : [{ name: 'CSV', extensions: ['csv'] }]
     });
@@ -62,10 +63,38 @@ export function setupExportHandlers(): void {
 
   ipcMain.handle('export:transactionsToExcel', async (_event, options: ExportOptions) => {
     try {
-      // For the lightweight version, generate a CSV-compatible file even for "Excel".
       const rows = getFilteredTransactions(options);
-      const csv = buildCsv(rows);
-      fs.writeFileSync(options.filePath, csv, { encoding: 'utf8' });
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Transactions');
+
+      worksheet.columns = [
+        { header: 'Date', key: 'date', width: 14 },
+        { header: 'Account', key: 'account_name', width: 24 },
+        { header: 'Payee', key: 'payee_name', width: 24 },
+        { header: 'Category', key: 'category_name', width: 24 },
+        { header: 'Description', key: 'description', width: 40 },
+        { header: 'Type', key: 'transaction_type', width: 16 },
+        { header: 'Amount', key: 'amount', width: 14 }
+      ];
+
+      rows.forEach((row) => {
+        worksheet.addRow({
+          date: row.date ?? '',
+          account_name: row.account_name ?? '',
+          payee_name: row.payee_name ?? '',
+          category_name: row.category_name ?? '',
+          description: row.description ?? '',
+          transaction_type: row.transaction_type ?? '',
+          amount: row.amount ?? null
+        });
+      });
+
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+      const amountColumn = worksheet.getColumn('amount');
+      amountColumn.numFmt = '#,##0.00';
+
+      await workbook.xlsx.writeFile(options.filePath);
       return {
         success: true,
         path: options.filePath,

@@ -48,28 +48,29 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
     severity: 'success'
   });
 
+  const formatDependencyError = (message: string, entityLabel: string) => {
+    if (message.toLowerCase().includes('foreign key')) {
+      return `This ${entityLabel} is still referenced elsewhere and cannot be deleted yet.`;
+    }
+
+    return message;
+  };
+
   // Load payees and categories
   const loadPayees = async () => {
     try {
       setLoading(true);
-      console.log('=== LOADING PAYEES DEBUG ===');
-      console.log('1. About to fetch payees from database...');
-      
-      // Test basic connectivity
-      console.log('2. Testing API connectivity...');
-      const testResult = await window.api.categories.getAll();
-      console.log('3. Categories loaded successfully:', testResult?.length || 0, 'categories');
-      
-      const data = await window.api.payees?.getAll();
-      console.log('4. Received payees:', data);
-      console.log('5. Payees count:', data?.length || 0);
-      setPayees(data || []);
-      
-      // Load categories for the form
-      setCategories(testResult);
+      const [categoryData, payeeData] = await Promise.all([
+        window.api.categories.getAll(),
+        window.api.payees.getEnhanced()
+      ]);
+      setCategories(categoryData);
+      setPayees(payeeData || []);
+      setSelectedPayees((prev) =>
+        prev.filter((id) => payeeData.some((payee) => payee.payee_id === id))
+      );
     } catch (error) {
       console.error('Error loading payees:', error);
-      console.error('Full error details:', error instanceof Error ? error.message : 'Unknown error');
       setSnackbar({
         open: true,
         message: 'Failed to load payees from database',
@@ -126,9 +127,8 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
   const handleDeleteConfirm = async () => {
     if (payeeToDelete) {
       try {
-        console.log('Deleting payee:', payeeToDelete);
-        const result = await window.api.payees?.delete(payeeToDelete);
-        if (result?.success) {
+        const result = await window.api.payees.delete(payeeToDelete);
+        if (result.success) {
           setSnackbar({
             open: true,
             message: 'Payee deleted successfully',
@@ -138,7 +138,7 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
         } else {
           setSnackbar({
             open: true,
-            message: 'Failed to delete payee',
+            message: formatDependencyError(result.error || 'Failed to delete payee', 'payee'),
             severity: 'error'
           });
         }
@@ -163,8 +163,8 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
     }
 
     try {
-      const result = await window.api.payees?.bulkDelete(selectedPayees);
-      if (result?.success) {
+      const result = await window.api.payees.bulkDelete(selectedPayees);
+      if (result.success) {
         setSnackbar({
           open: true,
           message: `Deleted ${result.deletedCount} payees`,
@@ -175,7 +175,10 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
       } else {
         setSnackbar({
           open: true,
-          message: 'Failed to delete selected payees',
+          message:
+            result.deletedCount > 0
+              ? `Deleted ${result.deletedCount} payees, but some could not be removed. ${formatDependencyError(result.error || '', 'payee')}`
+              : formatDependencyError(result.error || 'Failed to delete selected payees', 'payee'),
           severity: 'error'
         });
       }
@@ -196,65 +199,27 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
     try {
       if (payee.payee_id) {
         // Update existing payee
-        console.log('Updating payee:', payee);
-        const result = await window.api.payees?.update(payee.payee_id, payee);
-        console.log('Update result:', result);
-        if (result?.success) {
+        const result = await window.api.payees.update(payee.payee_id, payee);
+        if (result.success) {
           setSnackbar({
             open: true,
             message: 'Payee updated successfully',
             severity: 'success'
           });
         } else {
-          throw new Error(result?.error || 'Update failed');
+          throw new Error(result.error || 'Update failed');
         }
       } else {
         // Create new payee
-        console.log('=== PAYEE CREATION DEBUG ===');
-        console.log('1. Original payee data:', JSON.stringify(payee, null, 2));
-        console.log('2. Payee data types:', {
-          name: typeof payee.name,
-          default_category_id: typeof payee.default_category_id,
-          details: typeof payee.details
-        });
-        console.log('3. Payee data validation:', {
-          hasName: !!payee.name,
-          nameLength: payee.name?.length,
-          hasValidCategoryId: payee.default_category_id === null || (typeof payee.default_category_id === 'number' && payee.default_category_id > 0)
-        });
-        
-        try {
-          console.log('4. About to make API call...');
-          
-          if (!window.api) {
-            throw new Error('window.api is not available');
-          }
-          
-          if (!window.api.payees) {
-            throw new Error('window.api.payees is not available');
-          }
-          
-          console.log('5. API and payees endpoint available, making call...');
-          const result = await window.api.payees.create(payee);
-          console.log('6. API call completed, result:', JSON.stringify(result, null, 2));
-          
-          if (result?.success) {
-            console.log('7. Success - payee created with ID:', result.id);
-            setSnackbar({
-              open: true,
-              message: 'Payee created successfully',
-              severity: 'success'
-            });
-          } else {
-            console.log('8. Failure - result indicates failure:', result);
-            throw new Error(result?.error || 'Creation failed');
-          }
-        } catch (apiError) {
-          console.log('9. API call threw error:', apiError);
-          console.log('10. Error type:', typeof apiError);
-          console.log('11. Error message:', apiError instanceof Error ? apiError.message : 'No message');
-          console.log('12. Error stack:', apiError instanceof Error ? apiError.stack : 'No stack');
-          throw apiError;
+        const result = await window.api.payees.create(payee);
+        if (result.success) {
+          setSnackbar({
+            open: true,
+            message: 'Payee created successfully',
+            severity: 'success'
+          });
+        } else {
+          throw new Error(result.error || 'Creation failed');
         }
       }
       
@@ -265,7 +230,7 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ inSettingsPage = false }) => {
       console.error('Error saving payee:', error);
       setSnackbar({
         open: true,
-        message: `Failed to save payee: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Failed to save payee: ${formatDependencyError(error instanceof Error ? error.message : 'Unknown error', 'payee')}`,
         severity: 'error'
       });
     }

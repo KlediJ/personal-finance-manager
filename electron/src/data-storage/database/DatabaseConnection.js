@@ -19,7 +19,9 @@ class DatabaseConnection {
         }
         // Set database file path
         this.dbPath = path_1.default.join(dbDirectory, 'finance_manager.db');
-        console.log(`Database path: ${this.dbPath}`);
+        if (this.isDevelopment) {
+            console.log(`Database path: ${this.dbPath}`);
+        }
     }
     static getInstance() {
         if (!this.instance) {
@@ -28,11 +30,13 @@ class DatabaseConnection {
             }
             try {
                 this.instance = new better_sqlite3_1.default(this.dbPath, {
-                    verbose: console.log
+                    verbose: this.isDevelopment ? console.log : undefined
                 });
                 // Enable foreign keys support
                 this.instance.pragma('foreign_keys = ON');
-                console.log('Database connection established');
+                if (this.isDevelopment) {
+                    console.log('Database connection established');
+                }
             }
             catch (error) {
                 console.error('Failed to connect to database:', error);
@@ -45,9 +49,11 @@ class DatabaseConnection {
         if (this.instance) {
             this.instance.close();
             this.instance = undefined;
-            console.log('Database connection closed');
+            if (this.isDevelopment) {
+                console.log('Database connection closed');
+            }
         }
     }
 }
 exports.DatabaseConnection = DatabaseConnection;
-//# sourceMappingURL=DatabaseConnection.js.map
+DatabaseConnection.isDevelopment = process.env.NODE_ENV === 'development';

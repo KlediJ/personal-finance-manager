@@ -1,5 +1,4 @@
 import React from 'react';
-import EnvironmentIndicator from './presentation/components/EnvironmentIndicator';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -12,11 +11,6 @@ import AccountsPage from './presentation/pages/accounts/AccountsPage';
 import TransactionsPage from './presentation/pages/transactions/TransactionsPage';
 import DashboardPage from './presentation/pages/dashboard/DashboardPage';
 import SettingsPage from './presentation/pages/settings';
-import BudgetPage from './presentation/pages/budget';
-import AIPage from './presentation/pages/ai';
-import LoansPage from './presentation/pages/loans';
-import CreditCardsPage from './presentation/pages/credit-cards';
-import MonthlyActivityPage from './presentation/pages/analysis/MonthlyActivityPage';
 
 // Create theme
 const theme = createTheme({
@@ -41,17 +35,11 @@ const App: React.FC = () => {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
-            <Route path="/activity" element={<MonthlyActivityPage />} />
-            <Route path="/loans" element={<LoansPage />} />
-            <Route path="/credit-cards" element={<CreditCardsPage />} />
-            <Route path="/budget" element={<BudgetPage />} />
-            <Route path="/ai" element={<AIPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </MainLayout>
       </Router>
-      <EnvironmentIndicator />
     </ThemeProvider>
   );
 };

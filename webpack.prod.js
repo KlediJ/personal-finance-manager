@@ -7,7 +7,7 @@ module.exports = {
   mode: 'production',
   entry: './src/index.tsx',
   target: 'web',
-  devtool: 'source-map',
+  devtool: false,
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.[contenthash].js'

@@ -8,8 +8,7 @@ import {
   Container,
   FormControlLabel,
   RadioGroup,
-  Radio,
-  Checkbox
+  Radio
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CategoryIcon from '@mui/icons-material/Category';
@@ -57,16 +56,6 @@ const GeneralSettings = () => {
     }
   });
 
-  const [showAI, setShowAI] = useState<boolean>(() => {
-    try {
-      if (typeof window === 'undefined') return true;
-      const stored = window.localStorage.getItem('pfm.showAI');
-      return stored === 'false' ? false : true;
-    } catch {
-      return true;
-    }
-  });
-
   useEffect(() => {
     const loadEnvironment = async () => {
       try {
@@ -91,16 +80,6 @@ const GeneralSettings = () => {
       // Ignore storage errors
     }
   }, [defaultExportFormat]);
-
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('pfm.showAI', showAI ? 'true' : 'false');
-      }
-    } catch {
-      // Ignore storage errors
-    }
-  }, [showAI]);
 
   return (
     <Box>
@@ -140,29 +119,11 @@ const GeneralSettings = () => {
           }
         >
           <FormControlLabel value="csv" control={<Radio />} label="CSV" />
-          <FormControlLabel value="excel" control={<Radio />} label="Excel (CSV-compatible)" />
+          <FormControlLabel value="excel" control={<Radio />} label="Excel (.xlsx)" />
         </RadioGroup>
         <Typography variant="caption" color="text.secondary">
           This is used as the default format in the ledger export dialog.
         </Typography>
-
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="body2" sx={{ mb: 1 }}>
-            Features
-          </Typography>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={showAI}
-                onChange={(e) => setShowAI(e.target.checked)}
-              />
-            }
-            label="Show AI Assistant in sidebar"
-          />
-          <Typography variant="caption" color="text.secondary">
-            When turned off, the AI Assistant entry is hidden from the main navigation. You can re-enable it here at any time.
-          </Typography>
-        </Box>
       </Paper>
     </Box>
   );

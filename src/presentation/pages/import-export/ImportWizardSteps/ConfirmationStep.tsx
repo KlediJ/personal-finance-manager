@@ -3,7 +3,14 @@ import { Box, Typography, Paper, Alert, AlertTitle } from '@mui/material';
 import { CheckCircleOutline, ErrorOutline } from '@mui/icons-material';
 
 interface ConfirmationStepProps {
-  result: { success: boolean, count: number } | null;
+  result: {
+    success: boolean;
+    count: number;
+    importedTransactions: number;
+    importedTransfers: number;
+    skippedCount: number;
+    failedCount: number;
+  } | null;
   fileName: string | null;
 }
 
@@ -35,7 +42,7 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
               Import Successful
             </Typography>
             <Typography variant="body1" textAlign="center">
-              Successfully imported {result.count} transactions from {fileName}
+              Successfully imported {result.count} items from {fileName}
             </Typography>
           </>
         ) : (
@@ -55,11 +62,15 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
         <AlertTitle>{result?.success ? 'Success' : 'Error'}</AlertTitle>
         {result?.success ? (
           <Typography variant="body2">
-            All valid transactions have been imported successfully. You can now view and manage them in the Transactions page.
+            Imported {result.importedTransactions} regular transactions and {result.importedTransfers} transfers.
+            {result.skippedCount > 0 ? ` Skipped ${result.skippedCount} transfer candidate(s).` : ''}
+            You can now view and manage them in the Transactions page.
           </Typography>
         ) : (
           <Typography variant="body2">
-            An error occurred during the import process. Please try again or check the file format.
+            Imported {result?.importedTransactions || 0} regular transactions and {result?.importedTransfers || 0} transfers.
+            {result && result.skippedCount > 0 ? ` Skipped ${result.skippedCount} candidate(s).` : ''}
+            {result && result.failedCount > 0 ? ` ${result.failedCount} item(s) failed.` : ''}
           </Typography>
         )}
       </Alert>

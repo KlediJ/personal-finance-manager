@@ -72,7 +72,7 @@ export function setupCategoryHandlers(): void {
       return { id, success: true };
     } catch (error) {
       console.error('Error creating category:', error);
-      throw error;
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
 
@@ -83,7 +83,7 @@ export function setupCategoryHandlers(): void {
       return { success };
     } catch (error) {
       console.error(`Error updating category ${id}:`, error);
-      throw error;
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
 
@@ -94,7 +94,37 @@ export function setupCategoryHandlers(): void {
       return { success };
     } catch (error) {
       console.error(`Error deleting category ${id}:`, error);
-      throw error;
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+  });
+
+  // Bulk delete categories by IDs
+  ipcMain.handle('categories:bulkDelete', async (_, ids: number[]) => {
+    let deletedCount = 0;
+    const errors: string[] = [];
+
+    for (const id of ids) {
+      if (!id) continue;
+
+      try {
+        const success = categoryRepository.delete(id);
+        if (success) {
+          deletedCount++;
+        }
+      } catch (error) {
+        console.error(`Error bulk deleting category ${id}:`, error);
+        errors.push(error instanceof Error ? error.message : `Failed to delete category ${id}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      return {
+        success: false,
+        deletedCount,
+        error: errors[0]
+      };
+    }
+
+    return { success: true, deletedCount };
   });
 }

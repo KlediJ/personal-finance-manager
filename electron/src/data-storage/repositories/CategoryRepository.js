@@ -66,4 +66,3 @@ class CategoryRepository extends BaseRepository_1.BaseRepository {
     }
 }
 exports.CategoryRepository = CategoryRepository;
-//# sourceMappingURL=CategoryRepository.js.map

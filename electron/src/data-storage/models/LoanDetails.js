@@ -17,4 +17,3 @@ var PaymentFrequency;
     PaymentFrequency["WEEKLY"] = "weekly";
     PaymentFrequency["QUARTERLY"] = "quarterly";
 })(PaymentFrequency || (exports.PaymentFrequency = PaymentFrequency = {}));
-//# sourceMappingURL=LoanDetails.js.map

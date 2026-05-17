@@ -66,48 +66,18 @@ contextBridge.exposeInMainWorld('api', {
     getHierarchy: () => ipcRenderer.invoke('categories:getHierarchy'),
     create: (category: Category) => ipcRenderer.invoke('categories:create', category),
     update: (id: number, category: Category) => ipcRenderer.invoke('categories:update', id, category),
-    delete: (id: number) => ipcRenderer.invoke('categories:delete', id)
+    delete: (id: number) => ipcRenderer.invoke('categories:delete', id),
+    bulkDelete: (ids: number[]) => ipcRenderer.invoke('categories:bulkDelete', ids)
   },
-
-  debug: {
-    getCategories: () => ipcRenderer.invoke('debug:getCategories'),
-    migrateCategories: () => ipcRenderer.invoke('debug:migrateCategories'),
-    seedFeedbackFromWF: () => ipcRenderer.invoke('debug:seedFeedbackFromWF')
-  },
-
   payees: {
-    getAll: () => {
-      console.log('Preload: Calling payees:getAll');
-      return ipcRenderer.invoke('payees:getAll');
-    },
-    getById: (id: number) => {
-      console.log('Preload: Calling payees:getById', id);
-      return ipcRenderer.invoke('payees:getById', id);
-    },
-    create: (payee: Payee) => {
-      console.log('Preload: Calling payees:create', payee);
-      return ipcRenderer.invoke('payees:create', payee);
-    },
-    update: (id: number, payee: Payee) => {
-      console.log('Preload: Calling payees:update', id, payee);
-      return ipcRenderer.invoke('payees:update', id, payee);
-    },
-    delete: (id: number) => {
-      console.log('Preload: Calling payees:delete', id);
-      return ipcRenderer.invoke('payees:delete', id);
-    },
-    bulkDelete: (ids: number[]) => {
-      console.log('Preload: Calling payees:bulkDelete', ids);
-      return ipcRenderer.invoke('payees:bulkDelete', ids);
-    },
-    getEnhanced: () => {
-      console.log('Preload: Calling payees:getEnhanced');
-      return ipcRenderer.invoke('payees:getEnhanced');
-    },
-    createIfNotExists: (payee: Payee) => {
-      console.log('Preload: Calling payees:createIfNotExists', payee);
-      return ipcRenderer.invoke('payees:createIfNotExists', payee);
-    }
+    getAll: () => ipcRenderer.invoke('payees:getAll'),
+    getById: (id: number) => ipcRenderer.invoke('payees:getById', id),
+    create: (payee: Payee) => ipcRenderer.invoke('payees:create', payee),
+    update: (id: number, payee: Payee) => ipcRenderer.invoke('payees:update', id, payee),
+    delete: (id: number) => ipcRenderer.invoke('payees:delete', id),
+    bulkDelete: (ids: number[]) => ipcRenderer.invoke('payees:bulkDelete', ids),
+    getEnhanced: () => ipcRenderer.invoke('payees:getEnhanced'),
+    createIfNotExists: (payee: Payee) => ipcRenderer.invoke('payees:createIfNotExists', payee)
   },
   
   database: {
@@ -117,10 +87,7 @@ contextBridge.exposeInMainWorld('api', {
   
   budgets: {
     getAll: () => ipcRenderer.invoke('budgets:getAll'),
-    getAllWithCategories: () => {
-      console.log('Preload: Calling budgets:getAllWithCategories');
-      return ipcRenderer.invoke('budgets:getAllWithCategories');
-    },
+    getAllWithCategories: () => ipcRenderer.invoke('budgets:getAllWithCategories'),
     getById: (id: number) => ipcRenderer.invoke('budgets:getById', id),
     getByPeriod: (period: string) => ipcRenderer.invoke('budgets:getByPeriod', period),
     getByDateRange: (startDate: string, endDate: string) => 
@@ -128,10 +95,7 @@ contextBridge.exposeInMainWorld('api', {
     getByCategory: (categoryId: number) => ipcRenderer.invoke('budgets:getByCategory', categoryId),
     getCurrentBudgets: () => ipcRenderer.invoke('budgets:getCurrentBudgets'),
     getCurrentBudgetsWithCategories: () => ipcRenderer.invoke('budgets:getCurrentBudgetsWithCategories'),
-    getBudgetProgress: (date?: string) => {
-      console.log('Preload: Calling budgets:getBudgetProgress', date);
-      return ipcRenderer.invoke('budgets:getBudgetProgress', date);
-    },
+    getBudgetProgress: (date?: string) => ipcRenderer.invoke('budgets:getBudgetProgress', date),
     create: (budget: Budget) => ipcRenderer.invoke('budgets:create', budget),
     update: (id: number, budget: Budget) => ipcRenderer.invoke('budgets:update', id, budget),
     delete: (id: number) => ipcRenderer.invoke('budgets:delete', id)

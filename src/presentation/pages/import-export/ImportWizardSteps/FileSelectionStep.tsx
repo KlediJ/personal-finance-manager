@@ -52,7 +52,7 @@ const FileSelectionStep: React.FC<FileSelectionStepProps> = ({ onFileSelected })
       // Open file dialog
       const result = await window.api.import.showFileDialog({
         filters: fileType === 'csv' ? [{ name: 'CSV Files', extensions: ['csv'] }] :
-                                      [{ name: 'Excel Files', extensions: ['xlsx', 'xls'] }]
+                                      [{ name: 'Excel Files', extensions: ['xlsx'] }]
       });
       
       if (result.canceled || !result.filePath) {
@@ -151,7 +151,7 @@ const FileSelectionStep: React.FC<FileSelectionStepProps> = ({ onFileSelected })
           <FormControlLabel 
             value="excel" 
             control={<Radio />} 
-            label="Excel File" 
+            label="Excel (.xlsx)" 
           />
         </RadioGroup>
       </FormControl>
@@ -223,7 +223,7 @@ const FileSelectionStep: React.FC<FileSelectionStepProps> = ({ onFileSelected })
         <Typography variant="body2" color="text.secondary">
           <strong>Note:</strong> The file should contain transaction data with columns for date, amount,
           description, and other transaction details. The next step will allow you to map these columns
-          to the correct fields in the database.
+          to the correct fields in the database. Excel imports currently support `.xlsx` files.
         </Typography>
       </Box>
     </Box>

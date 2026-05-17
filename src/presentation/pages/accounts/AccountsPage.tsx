@@ -48,9 +48,7 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ inSettingsPage = false }) =
   const loadAccounts = async () => {
     try {
       setLoading(true);
-      console.log('Fetching accounts from database...');
       const data = await window.api.accounts.getAll();
-      console.log('Received accounts:', data);
       setAccounts(data);
     } catch (error) {
       console.error('Error loading accounts:', error);
@@ -90,7 +88,6 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ inSettingsPage = false }) =
   const handleDeleteConfirm = async () => {
     if (accountToDelete) {
       try {
-        console.log('Deleting account:', accountToDelete);
         const result = await window.api.accounts.delete(accountToDelete);
         if (result.success) {
           setSnackbar({
@@ -102,7 +99,7 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ inSettingsPage = false }) =
         } else {
           setSnackbar({
             open: true,
-            message: 'Failed to delete account',
+            message: result.error || 'Failed to delete account',
             severity: 'error'
           });
         }
@@ -110,7 +107,7 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ inSettingsPage = false }) =
         console.error('Error deleting account:', error);
         setSnackbar({
           open: true,
-          message: 'An error occurred while deleting the account',
+          message: error instanceof Error ? error.message : 'An error occurred while deleting the account',
           severity: 'error'
         });
       }
@@ -124,7 +121,6 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ inSettingsPage = false }) =
     try {
       if (account.account_id) {
         // Update existing account
-        console.log('Updating account:', account);
         const result = await window.api.accounts.update(account.account_id, account);
         if (result.success) {
           setSnackbar({
@@ -137,7 +133,6 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ inSettingsPage = false }) =
         }
       } else {
         // Create new account
-        console.log('Creating account:', account);
         const result = await window.api.accounts.create(account);
         if (result.success) {
           setSnackbar({

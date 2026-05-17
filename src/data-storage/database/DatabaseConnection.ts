@@ -6,6 +6,7 @@ import { app } from 'electron';
 export class DatabaseConnection {
   private static instance: Database.Database | undefined;
   private static dbPath: string;
+  private static readonly isDevelopment = process.env.NODE_ENV === 'development';
 
   public static initialize(): void {
     // Determine app data directory (platform-specific)
@@ -20,7 +21,9 @@ export class DatabaseConnection {
     // Set database file path
     this.dbPath = path.join(dbDirectory, 'finance_manager.db');
     
-    console.log(`Database path: ${this.dbPath}`);
+    if (this.isDevelopment) {
+      console.log(`Database path: ${this.dbPath}`);
+    }
   }
 
   public static getInstance(): Database.Database {
@@ -30,14 +33,16 @@ export class DatabaseConnection {
       }
       
       try {
-        this.instance = new Database(this.dbPath, { 
-          verbose: console.log 
+        this.instance = new Database(this.dbPath, {
+          verbose: this.isDevelopment ? console.log : undefined
         });
         
         // Enable foreign keys support
         this.instance.pragma('foreign_keys = ON');
         
-        console.log('Database connection established');
+        if (this.isDevelopment) {
+          console.log('Database connection established');
+        }
       } catch (error) {
         console.error('Failed to connect to database:', error);
         throw error;
@@ -51,7 +56,9 @@ export class DatabaseConnection {
     if (this.instance) {
       this.instance.close();
       this.instance = undefined;
-      console.log('Database connection closed');
+      if (this.isDevelopment) {
+        console.log('Database connection closed');
+      }
     }
   }
 }

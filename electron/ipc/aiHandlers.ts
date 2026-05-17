@@ -1,12 +1,16 @@
 import { ipcMain } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
 import { TransactionCategorizationService, CategorizationResult } from '../../src/data-processing/ai/TransactionCategorizationService';
 import { Transaction } from '../../src/data-storage/models/Transaction';
 import { Category } from '../../src/data-storage/models/Category';
 import { Payee } from '../../src/data-storage/models/Payee';
+import { fingerprintDescription } from '../../src/data-processing/ai/FingerprintUtil';
 
 // Global AI service instance
 let categorizationService: TransactionCategorizationService | null = null;
 let dbInstance: any = null;
+let trainingCorpusPath: string | null = null;
 
 interface CategorizationRule {
   rule_id?: number;
@@ -17,11 +21,24 @@ interface CategorizationRule {
   active: number;
 }
 
+interface TrainingPrior {
+  category_id: number | null;
+  category_name: string | null;
+  support: number;
+}
+
 // Initialize AI services with database instance
 const initializeAIServices = async (db?: any) => {
   // Store database instance if provided
   if (db) {
     dbInstance = db;
+  } else if (!dbInstance) {
+    try {
+      const { DatabaseConnection } = require('../../src/data-storage/database/DatabaseConnection');
+      dbInstance = DatabaseConnection.getInstance();
+    } catch (err) {
+      console.error('Unable to attach database instance for AI services:', err);
+    }
   }
 
   // Initialize rule-based categorization service
@@ -46,6 +63,43 @@ const initializeAIServices = async (db?: any) => {
           created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
       `).run();
+
+      dbInstance.prepare(`
+        CREATE TABLE IF NOT EXISTS ai_training_corpus (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fingerprint TEXT,
+          raw_description TEXT,
+          amount REAL,
+          transaction_type TEXT,
+          category_id INTEGER,
+          category_name TEXT,
+          payee_id INTEGER,
+          payee_name TEXT,
+          source TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+
+      dbInstance.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_ai_training_corpus_fingerprint
+          ON ai_training_corpus (fingerprint)
+      `).run();
+
+      dbInstance.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_ai_training_corpus_category
+          ON ai_training_corpus (category_id, category_name)
+      `).run();
+
+      // Try to resolve the labeled CSV path once
+      const candidatePath = path.join(process.cwd(), 'docs', 'labeled_transactions_wf_checking_2025-09.csv');
+      if (fs.existsSync(candidatePath)) {
+        trainingCorpusPath = candidatePath;
+      }
+
+      // Seed training table from CSV if available and not already populated
+      if (trainingCorpusPath) {
+        seedTrainingCorpusFromCSV(trainingCorpusPath);
+      }
     } catch (error) {
       console.error('Failed to initialize ai_categorization_feedback table:', error);
     }
@@ -59,6 +113,165 @@ const ensureDatabaseReady = (): boolean => {
     return false;
   }
   return true;
+};
+
+// Seed the local training table from a labeled CSV (one-time best effort)
+const seedTrainingCorpusFromCSV = (csvPath: string) => {
+  try {
+    const rowCount = dbInstance
+      .prepare('SELECT COUNT(*) as cnt FROM ai_training_corpus')
+      .get()?.cnt as number;
+
+    if (rowCount > 0) {
+      return; // already seeded
+    }
+
+    const content = fs.readFileSync(csvPath, 'utf-8');
+    const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    if (lines.length <= 1) return;
+
+    const header = lines[0].split(',');
+    const idx = {
+      description_raw: header.indexOf('description_raw'),
+      amount: header.indexOf('amount'),
+      transaction_type_label: header.indexOf('transaction_type_label'),
+      payee_label: header.indexOf('payee_label'),
+      category_name_label: header.indexOf('category_name_label')
+    };
+
+    const insertStmt = dbInstance.prepare(`
+      INSERT INTO ai_training_corpus (
+        fingerprint, raw_description, amount, transaction_type, category_id, category_name, payee_name, source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    let inserted = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      // Basic CSV split with quote handling
+      const cells = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+      if (!cells || cells.length < header.length) continue;
+
+      const rawDescription = cells[idx.description_raw] ?? '';
+      const amount = Number(cells[idx.amount] ?? 0);
+      const txnType = cells[idx.transaction_type_label] ?? '';
+      const payee = cells[idx.payee_label] ?? '';
+      const categoryName = cells[idx.category_name_label] ?? '';
+      const fp = fingerprintDescription(rawDescription);
+
+      insertStmt.run(fp, rawDescription, amount, txnType, null, categoryName, payee, 'seed_csv');
+      inserted++;
+    }
+
+    console.log(`Seeded training corpus from CSV (${inserted} rows)`);
+  } catch (error) {
+    console.error('Error seeding training corpus from CSV:', error);
+  }
+};
+
+// Look up majority category by fingerprint from training corpus + feedback
+const getTrainingPriorForFingerprint = (fingerprint: string): TrainingPrior | null => {
+  if (!fingerprint || !dbInstance) return null;
+
+  try {
+    const row = dbInstance.prepare(
+      `
+        SELECT category_id, category_name, COUNT(*) as cnt
+        FROM ai_training_corpus
+        WHERE fingerprint = ?
+        GROUP BY category_id, category_name
+        ORDER BY cnt DESC
+        LIMIT 1
+      `
+    ).get(fingerprint);
+
+    if (row && row.cnt >= 2) {
+      return {
+        category_id: row.category_id ?? null,
+        category_name: row.category_name ?? null,
+        support: row.cnt
+      };
+    }
+  } catch (error) {
+    console.error('Error reading training prior:', error);
+  }
+
+  return null;
+};
+
+// Insert a confirmed example into the training corpus
+const recordTrainingExample = (params: {
+  fingerprint: string;
+  raw_description?: string | null;
+  amount?: number | null;
+  transaction_type?: string | null;
+  category_id?: number | null;
+  category_name?: string | null;
+  payee_id?: number | null;
+  payee_name?: string | null;
+  source: string;
+}) => {
+  if (!dbInstance || !params.fingerprint) return;
+  try {
+    dbInstance.prepare(
+      `
+        INSERT INTO ai_training_corpus (
+          fingerprint, raw_description, amount, transaction_type,
+          category_id, category_name, payee_id, payee_name, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `
+    ).run(
+      params.fingerprint,
+      params.raw_description ?? null,
+      params.amount ?? null,
+      params.transaction_type ?? null,
+      params.category_id ?? null,
+      params.category_name ?? null,
+      params.payee_id ?? null,
+      params.payee_name ?? null,
+      params.source
+    );
+  } catch (error) {
+    console.error('Error recording training example:', error);
+  }
+};
+
+// Apply training prior to the predictions (in-memory augmentation)
+const applyTrainingPrior = (
+  transaction: Transaction,
+  predictions: any[],
+  availableCategories: Category[]
+) => {
+  const fp = fingerprintDescription(transaction.description || '');
+  const prior = getTrainingPriorForFingerprint(fp);
+
+  if (!prior || !prior.category_name) return { predictions, rationale: null };
+
+  const match = availableCategories.find(
+    (c) =>
+      c.category_id === prior.category_id ||
+      (c.name &&
+        prior.category_name &&
+        c.name.toLowerCase() === prior.category_name.toLowerCase())
+  );
+
+  if (!match) return { predictions, rationale: null };
+
+  const boosted = {
+    category: match,
+    confidence: 0.93,
+    rationale: `Training prior (${prior.support} samples)`
+  };
+
+  // Deduplicate keeping highest confidence
+  const filtered = predictions.filter(
+    (p) => p.category.category_id !== match.category_id
+  );
+
+  return {
+    predictions: [boosted, ...filtered].sort((a, b) => b.confidence - a.confidence).slice(0, 3),
+    rationale: boosted.rationale
+  };
 };
 
 // Load all active categorization rules
@@ -184,6 +397,7 @@ ipcMain.handle('ai:categorizeTransaction', async (event, transaction: Transactio
     const matchedRule = findMatchingRuleForTransaction(transaction, rules);
 
     let result: CategorizationResult;
+    let trainingRationale: string | null = null;
 
     if (matchedRule) {
       const ruleCategory = (availableCategories as Category[]).find(
@@ -239,12 +453,33 @@ ipcMain.handle('ai:categorizeTransaction', async (event, transaction: Transactio
       }
     }
 
+    // Apply training prior (CSV + feedback) as a high-confidence hint
+    const withPrior = applyTrainingPrior(transaction, result.categoryPredictions, availableCategories);
+    result.categoryPredictions = withPrior.predictions;
+    trainingRationale = withPrior.rationale;
+
+    // Record this auto decision as a weak training example for future weighting
+    if (result.categoryPredictions.length > 0) {
+      recordTrainingExample({
+        fingerprint: fingerprintDescription(transaction.description || ''),
+        raw_description: transaction.description,
+        amount: transaction.amount,
+        transaction_type: (transaction as any).transaction_type,
+        category_id: result.categoryPredictions[0].category.category_id,
+        category_name: result.categoryPredictions[0].category.name,
+        payee_id: payeeId || null,
+        payee_name: payeeName || (result.payeeExtraction?.payee?.name ?? null),
+        source: trainingRationale ? 'training_prior' : 'ai_prediction'
+      });
+    }
+
     return {
       success: true,
       predictions: result.categoryPredictions,
       payeeExtraction: result.payeeExtraction,
       extractedInfo: result.extractedInfo,
-      confidence: result.confidence
+      confidence: result.confidence,
+      rationale: trainingRationale
     };
   } catch (error) {
     console.error('Error categorizing transaction:', error);
@@ -336,14 +571,41 @@ ipcMain.handle('ai:batchCategorizeTransactions', async (event, transactions: Tra
             result.categoryPredictions = [learnedPrediction, ...remainingPredictions];
           }
         }
-      }
 
-      resultObj[transactionId] = {
-        categoryPredictions: result.categoryPredictions,
-        payeeExtraction: result.payeeExtraction,
-        extractedInfo: result.extractedInfo,
-        confidence: result.confidence
-      };
+        const withPrior = applyTrainingPrior(tx, result.categoryPredictions, availableCategories);
+        result.categoryPredictions = withPrior.predictions;
+
+        let rationale: string | null = withPrior.rationale || (rule ? 'Rule match' : null) || (learned ? 'Learned from feedback' : null);
+
+        if (result.categoryPredictions.length > 0) {
+          recordTrainingExample({
+            fingerprint: fingerprintDescription(tx.description || ''),
+            raw_description: tx.description,
+            amount: tx.amount,
+            transaction_type: (tx as any).transaction_type,
+            category_id: result.categoryPredictions[0].category.category_id,
+            category_name: result.categoryPredictions[0].category.name,
+            payee_id: payeeId || null,
+            payee_name: payeeName || (result.payeeExtraction?.payee?.name ?? null),
+            source: withPrior.rationale ? 'training_prior' : 'ai_prediction'
+          });
+        }
+
+        resultObj[transactionId] = {
+          categoryPredictions: result.categoryPredictions,
+          payeeExtraction: result.payeeExtraction,
+          extractedInfo: result.extractedInfo,
+          confidence: result.confidence,
+          rationale
+        };
+      } else {
+        resultObj[transactionId] = {
+          categoryPredictions: result.categoryPredictions,
+          payeeExtraction: result.payeeExtraction,
+          extractedInfo: result.extractedInfo,
+          confidence: result.confidence
+        };
+      }
     });
 
     console.log(`Batch categorization completed: ${results.size} transactions processed`);
@@ -443,6 +705,19 @@ ipcMain.handle('ai:learnFromFeedback', async (event, feedback: any) => {
             tx.description || null,
             tx.amount || null
           );
+
+          // Also record into training corpus for stronger priors
+          recordTrainingExample({
+            fingerprint: fingerprintDescription(tx.description || ''),
+            raw_description: tx.description,
+            amount: tx.amount,
+            transaction_type: (tx as any).transaction_type,
+            category_id: cat.category_id || null,
+            category_name: cat.name || null,
+            payee_id: payee?.payee_id || null,
+            payee_name: payee?.name || tx.payee_name || null,
+            source: 'user_feedback'
+          });
         }
       } catch (dbError) {
         console.error('Error writing feedback to ai_categorization_feedback:', dbError);

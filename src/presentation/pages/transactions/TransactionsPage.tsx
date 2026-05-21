@@ -99,6 +99,8 @@ const TransactionsPage: React.FC = () => {
   const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null);
   const [drilldownPayee, setDrilldownPayee] = useState<string | null>(null);
   const [drilldownMonth, setDrilldownMonth] = useState<string | null>(null);
+  const [drilldownStartDate, setDrilldownStartDate] = useState<string | null>(null);
+  const [drilldownEndDate, setDrilldownEndDate] = useState<string | null>(null);
   const [drilldownAccountId, setDrilldownAccountId] = useState<number | 'all' | null>(null);
   const [drilldownCategoryRollup, setDrilldownCategoryRollup] = useState<string | null>(null);
   const [drilldownPayeeRollup, setDrilldownPayeeRollup] = useState<string | null>(null);
@@ -358,6 +360,8 @@ const TransactionsPage: React.FC = () => {
     const category = params.get('category');
     const payee = params.get('payee');
     const sankeyMonth = params.get('sankeyMonth');
+    const sankeyStart = params.get('sankeyStart');
+    const sankeyEnd = params.get('sankeyEnd');
     const sankeyAccount = params.get('sankeyAccount');
     const categoryRollup = params.get('categoryRollup');
     const payeeRollup = params.get('payeeRollup');
@@ -365,6 +369,8 @@ const TransactionsPage: React.FC = () => {
     setDrilldownCategory(category);
     setDrilldownPayee(payee);
     setDrilldownMonth(sankeyMonth);
+    setDrilldownStartDate(sankeyStart);
+    setDrilldownEndDate(sankeyEnd);
     setDrilldownAccountId(
       sankeyAccount === 'all'
         ? 'all'
@@ -708,7 +714,12 @@ const TransactionsPage: React.FC = () => {
     let data = transactions;
     let sankeyScope = transactions;
 
-    if (drilldownMonth) {
+    if (drilldownStartDate && drilldownEndDate) {
+      const isWithinRange = (date: string) =>
+        date >= drilldownStartDate && date <= drilldownEndDate;
+      sankeyScope = sankeyScope.filter((t: any) => isWithinRange(t.date));
+      data = data.filter((t: any) => isWithinRange(t.date));
+    } else if (drilldownMonth) {
       sankeyScope = sankeyScope.filter((t: any) => isWithinMonth(t.date, drilldownMonth));
       data = data.filter((t: any) => isWithinMonth(t.date, drilldownMonth));
     }
@@ -851,6 +862,8 @@ const TransactionsPage: React.FC = () => {
     drilldownCategory,
     drilldownPayee,
     drilldownMonth,
+    drilldownStartDate,
+    drilldownEndDate,
     drilldownAccountId,
     drilldownCategoryRollup,
     drilldownPayeeRollup,

@@ -10,6 +10,7 @@ import {
   Alert,
   Select,
   MenuItem,
+  TextField,
   useTheme
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -19,6 +20,7 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { useNavigate } from 'react-router-dom';
 import CategoryBreakdown from './charts/CategoryBreakdown';
 import MonthlySpendingSankey from './charts/MonthlySpendingSankey';
+import CategoryTrendChart from './charts/CategoryTrendChart';
 import PayeeSummary from './PayeeSummary';
 import CategorySummary from './CategorySummary';
 
@@ -38,6 +40,14 @@ const DashboardPage: React.FC = () => {
   const [rangeTransactions, setRangeTransactions] = useState<any[]>([]);
   const [categorySummary, setCategorySummary] = useState<any[]>([]);
   const [payeeSummary, setPayeeSummary] = useState<any[]>([]);
+  const [categoryTrendData, setCategoryTrendData] = useState<
+    Array<{
+      monthKey: string;
+      label: string;
+      totals: Record<string, number>;
+    }>
+  >([]);
+  const [categoryTrendSeries, setCategoryTrendSeries] = useState<string[]>([]);
   
   // Monthly totals
   const [currentMonthIncome, setCurrentMonthIncome] = useState<number>(0);
@@ -48,10 +58,19 @@ const DashboardPage: React.FC = () => {
   const [selectedPivotCategory, setSelectedPivotCategory] = useState<string | null>(null);
 
   // Filters
-  const [periodMode, setPeriodMode] = useState<'current' | 'month'>('current');
+  const [periodMode, setPeriodMode] = useState<'current' | 'month' | 'range'>('current');
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [customStartDate, setCustomStartDate] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [customEndDate, setCustomEndDate] = useState<string>(() => {
+    const now = new Date();
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${lastDay}`;
   });
   const [selectedAccountId, setSelectedAccountId] = useState<number | 'all'>('all');
   const [selectedCategoryNames, setSelectedCategoryNames] = useState<string[] | 'all'>('all');
@@ -85,6 +104,55 @@ const DashboardPage: React.FC = () => {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
+  const getMonthKeyFromDate = (dateString: string) => dateString.slice(0, 7);
+
+  const getMonthLabelFromDateString = (dateString: string) => {
+    const [year, month] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, 1).toLocaleDateString('en-US', {
+      month: 'short',
+      year: '2-digit'
+    });
+  };
+
+  const getTrailingMonthWindow = (endDate: string, monthCount: number) => {
+    const [year, month] = endDate.split('-').map(Number);
+    const end = new Date(year, month - 1, 1);
+    const start = new Date(end.getFullYear(), end.getMonth() - (monthCount - 1), 1);
+    const endOfEndMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0);
+
+    return {
+      startDate: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`,
+      endDate: `${endOfEndMonth.getFullYear()}-${String(endOfEndMonth.getMonth() + 1).padStart(2, '0')}-${String(endOfEndMonth.getDate()).padStart(2, '0')}`
+    };
+  };
+
+  const getMonthKeysBetween = (startDate: string, endDate: string) => {
+    const [startYear, startMonth] = startDate.split('-').map(Number);
+    const [endYear, endMonth] = endDate.split('-').map(Number);
+    const cursor = new Date(startYear, startMonth - 1, 1);
+    const final = new Date(endYear, endMonth - 1, 1);
+    const keys: string[] = [];
+
+    while (cursor <= final) {
+      keys.push(
+        `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`
+      );
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    return keys;
+  };
+
+  const formatDateLabel = (dateString: string) => {
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
   const availableMonthOptions = useMemo(() => {
     const now = new Date();
     return Array.from({ length: 12 }).map((_, idx) => {
@@ -109,6 +177,37 @@ const DashboardPage: React.FC = () => {
     }
   }, [periodMode, selectedMonthKey]);
 
+  useEffect(() => {
+    if (periodMode === 'range' && (!customStartDate || !customEndDate)) {
+      const monthStart = getMonthStartFromKey(selectedMonthKey);
+      const monthEnd = getMonthEndFromKey(selectedMonthKey);
+      setCustomStartDate(monthStart);
+      setCustomEndDate(monthEnd);
+    }
+  }, [periodMode, customStartDate, customEndDate, selectedMonthKey]);
+
+  const resolvedPeriod = useMemo(() => {
+    if (periodMode === 'range') {
+      return {
+        startDate: customStartDate,
+        endDate: customEndDate,
+        label:
+          customStartDate && customEndDate
+            ? `${formatDateLabel(customStartDate)} - ${formatDateLabel(customEndDate)}`
+            : 'Custom period'
+      };
+    }
+
+    const monthKey =
+      periodMode === 'current' ? getCurrentMonthKey() : selectedMonthKey;
+
+    return {
+      startDate: getMonthStartFromKey(monthKey),
+      endDate: getMonthEndFromKey(monthKey),
+      label: getMonthLabelFromKey(monthKey)
+    };
+  }, [periodMode, selectedMonthKey, customStartDate, customEndDate]);
+
   // Get dashboard data
   const loadDashboardData = async () => {
     try {
@@ -123,12 +222,10 @@ const DashboardPage: React.FC = () => {
       const balance = await window.api.accounts.getTotalBalance();
       setTotalBalance(balance);
       
-      // Get current month's transactions for income/expense summary
-      const currentMonthStart = getMonthStartFromKey(selectedMonthKey);
-      const currentMonthEnd = getMonthEndFromKey(selectedMonthKey);
+      // Get transactions for the resolved dashboard period
       const monthTransactions = await window.api.transactions.getByDateRange(
-        currentMonthStart,
-        currentMonthEnd
+        resolvedPeriod.startDate,
+        resolvedPeriod.endDate
       );
 
       const accountFilteredMonthTx =
@@ -184,6 +281,79 @@ const DashboardPage: React.FC = () => {
         )
         .slice(0, 10);
       setRecentTransactions(recent);
+
+      const trendWindow =
+        periodMode === 'range'
+          ? {
+              startDate: resolvedPeriod.startDate,
+              endDate: resolvedPeriod.endDate
+            }
+          : getTrailingMonthWindow(resolvedPeriod.endDate, 6);
+
+      const trendTransactions = await window.api.transactions.getByDateRange(
+        trendWindow.startDate,
+        trendWindow.endDate
+      );
+
+      const accountFilteredTrendTx =
+        selectedAccountId === 'all'
+          ? trendTransactions
+          : trendTransactions.filter((t: any) => t.account_id === selectedAccountId);
+
+      const expenseTrendTransactions = accountFilteredTrendTx.filter(
+        (t: any) => t.transaction_type === 'expense'
+      );
+
+      const totalsByCategory = new Map<string, number>();
+      expenseTrendTransactions.forEach((t: any) => {
+        const categoryName = t.category_name || 'Uncategorized';
+        totalsByCategory.set(
+          categoryName,
+          (totalsByCategory.get(categoryName) || 0) + Math.abs(t.amount || 0)
+        );
+      });
+
+      const topCategories = Array.from(totalsByCategory.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([name]) => name);
+
+      const monthKeys = getMonthKeysBetween(
+        trendWindow.startDate,
+        trendWindow.endDate
+      );
+
+      const trendBuckets = new Map<string, Record<string, number>>();
+      monthKeys.forEach((monthKey) => {
+        trendBuckets.set(monthKey, {});
+      });
+
+      expenseTrendTransactions.forEach((t: any) => {
+        const monthKey = getMonthKeyFromDate(t.date);
+        if (!trendBuckets.has(monthKey)) {
+          trendBuckets.set(monthKey, {});
+        }
+
+        const categoryName = t.category_name || 'Uncategorized';
+        const bucketCategory =
+          topCategories.includes(categoryName) ? categoryName : 'Other';
+        const bucket = trendBuckets.get(monthKey)!;
+        bucket[bucketCategory] = (bucket[bucketCategory] || 0) + Math.abs(t.amount || 0);
+      });
+
+      const series =
+        totalsByCategory.size > topCategories.length
+          ? [...topCategories, 'Other']
+          : topCategories;
+
+      setCategoryTrendSeries(series);
+      setCategoryTrendData(
+        monthKeys.map((monthKey) => ({
+          monthKey,
+          label: getMonthLabelFromDateString(`${monthKey}-01`),
+          totals: trendBuckets.get(monthKey) || {}
+        }))
+      );
       
     } catch (err) {
       console.error('Error loading dashboard data:', err);
@@ -257,7 +427,7 @@ const DashboardPage: React.FC = () => {
   useEffect(() => {
     loadDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMonthKey, selectedAccountId]);
+  }, [selectedMonthKey, selectedAccountId, resolvedPeriod.startDate, resolvedPeriod.endDate]);
 
   // Calculate net change (income + expenses)
   const netChange = currentMonthIncome + currentMonthExpenses;
@@ -270,16 +440,25 @@ const DashboardPage: React.FC = () => {
         )
       : 0;
 
-  const monthLabel = getMonthLabelFromKey(selectedMonthKey);
   const periodLabel =
-    periodMode === 'current' ? `Current month · ${monthLabel}` : monthLabel;
+    periodMode === 'current'
+      ? `Current month - ${resolvedPeriod.label}`
+      : periodMode === 'month'
+        ? resolvedPeriod.label
+        : `Custom period - ${resolvedPeriod.label}`;
   const buildSankeyDrilldownUrl = (params: Record<string, string>) => {
     const search = new URLSearchParams({
-      sankeyMonth: selectedMonthKey,
       sankeyAccount:
         selectedAccountId === 'all' ? 'all' : String(selectedAccountId),
       ...params
     });
+
+    if (periodMode === 'range') {
+      search.set('sankeyStart', resolvedPeriod.startDate);
+      search.set('sankeyEnd', resolvedPeriod.endDate);
+    } else {
+      search.set('sankeyMonth', selectedMonthKey);
+    }
 
     return `/transactions?${search.toString()}`;
   };
@@ -436,6 +615,13 @@ const DashboardPage: React.FC = () => {
                   onClick={() => setPeriodMode('month')}
                   clickable
                 />
+                <Chip
+                  label="Custom period"
+                  color={periodMode === 'range' ? 'primary' : 'default'}
+                  variant={periodMode === 'range' ? 'filled' : 'outlined'}
+                  onClick={() => setPeriodMode('range')}
+                  clickable
+                />
                 {periodMode === 'month' && (
                   <Select
                     size="small"
@@ -449,6 +635,26 @@ const DashboardPage: React.FC = () => {
                       </MenuItem>
                     ))}
                   </Select>
+                )}
+                {periodMode === 'range' && (
+                  <>
+                    <TextField
+                      size="small"
+                      type="date"
+                      label="Start"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                    <TextField
+                      size="small"
+                      type="date"
+                      label="End"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </>
                 )}
                 <Box sx={{ flexGrow: 1 }} />
                 <Typography variant="subtitle2" color="text.secondary">
@@ -639,6 +845,23 @@ const DashboardPage: React.FC = () => {
                   )
                 }
               />
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Paper sx={{ p: 2.5 }}>
+              <Typography variant="h6" gutterBottom>
+                Spending Trend by Category
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Track how your top spending categories change across the selected time window.
+              </Typography>
+              <Box sx={{ height: 320 }}>
+                <CategoryTrendChart
+                  data={categoryTrendData}
+                  categories={categoryTrendSeries}
+                />
+              </Box>
             </Paper>
           </Grid>
 

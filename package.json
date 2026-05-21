@@ -39,6 +39,7 @@
     "payees:backfill": "node scripts/backfill-payees.js",
     "build:webpack": "webpack --config webpack.config.js",
     "build:electron": "tsc -p electron/tsconfig-electron.json",
+    "clean:dist": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-ChildItem .\\dist -File | Where-Object { ($_.Name -like 'bundle*') -or ($_.Name -in @('index.html','builder-debug.yml','builder-effective-config.yaml')) } | Remove-Item -Force; if (Test-Path .\\dist\\assets) { Remove-Item .\\dist\\assets -Recurse -Force }; if (Test-Path .\\dist\\.icon-ico) { Remove-Item .\\dist\\.icon-ico -Recurse -Force }\"",
     "clean:electron": "rm -f electron/*.js electron/*.js.map",
     "build": "npm run build:webpack && npm run build:electron",
     "build:prod": "cross-env NODE_ENV=production webpack --config webpack.prod.js && npm run build:electron",
@@ -46,7 +47,7 @@
     "package:win": "electron-builder --win",
     "package:mac": "electron-builder --mac",
     "package:linux": "electron-builder --linux",
-    "dist": "npm run build:prod && npm run package",
+    "dist": "npm run clean:dist && npm run build:prod && npm run package",
     "eval:categorization": "node scripts/evaluate-categorization.js",
     "inspect:categories": "node scripts/inspect-live-categories.js",
     "seed:feedback:wf": "node scripts/seed-feedback-from-wf.js"

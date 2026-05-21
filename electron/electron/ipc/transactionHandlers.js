@@ -134,6 +134,27 @@ function setupTransactionHandlers() {
             throw error;
         }
     });
+    // Get transactions pending later transfer review
+    electron_1.ipcMain.handle('transactions:getPendingTransferReview', async () => {
+        try {
+            return transactionRepository.getPendingTransferReview();
+        }
+        catch (error) {
+            console.error('Error getting pending transfer review transactions:', error);
+            throw error;
+        }
+    });
+    // Update pending transfer review state for a transaction
+    electron_1.ipcMain.handle('transactions:setPendingTransferReview', async (_, transactionId, pending) => {
+        try {
+            const success = transactionRepository.setPendingTransferReview(transactionId, pending);
+            return { success };
+        }
+        catch (error) {
+            console.error(`Error setting pending transfer review for transaction ${transactionId}:`, error);
+            throw error;
+        }
+    });
     // Bulk delete transactions with per-transaction accounting cleanup.
     electron_1.ipcMain.handle('transactions:bulkDelete', async (_, ids) => {
         try {
@@ -247,6 +268,16 @@ function setupTransactionHandlers() {
         }
         catch (error) {
             console.error('Error creating transfer:', error);
+            throw error;
+        }
+    });
+    // Convert a previously imported pending-review transaction into a linked transfer
+    electron_1.ipcMain.handle('transactions:convertPendingTransfer', async (_, transactionId, fromAccountId, toAccountId) => {
+        try {
+            return accountingService.convertPendingTransferReview(transactionId, fromAccountId, toAccountId);
+        }
+        catch (error) {
+            console.error(`Error converting pending transfer ${transactionId}:`, error);
             throw error;
         }
     });

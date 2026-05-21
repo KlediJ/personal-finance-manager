@@ -23,7 +23,8 @@ export class TransactionRepository extends BaseRepository<Transaction> {
       updated_at: row.updated_at,
       // Credit Card Transaction Logic enhancements - Phase 2
       transaction_subtype: row.transaction_subtype as TransactionSubtype,
-      linked_transaction_id: row.linked_transaction_id
+      linked_transaction_id: row.linked_transaction_id,
+      pending_transfer_review: Boolean(row.pending_transfer_review)
     };
   }
   
@@ -144,6 +145,31 @@ export class TransactionRepository extends BaseRepository<Transaction> {
       ORDER BY t.date DESC, t.transaction_id DESC
     `;
     return this.runQuery(query, [status]);
+  }
+
+  /**
+   * Get transactions that were deferred for later transfer review.
+   */
+  public getPendingTransferReview(): Transaction[] {
+    const query = `
+      SELECT t.*, p.name as payee_name, c.name as category_name
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      WHERE t.pending_transfer_review = 1
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+
+    return this.runQuery(query, []);
+  }
+
+  /**
+   * Update the pending transfer review state for a transaction.
+   */
+  public setPendingTransferReview(transactionId: number, pending: boolean): boolean {
+    return this.update(transactionId, {
+      pending_transfer_review: pending
+    } as Partial<Transaction>);
   }
 
   /**

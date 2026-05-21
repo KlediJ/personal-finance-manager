@@ -45,12 +45,17 @@ contextBridge.exposeInMainWorld('api', {
     getByCategory: (categoryId: number) => ipcRenderer.invoke('transactions:getByCategory', categoryId),
     getByType: (type: string) => ipcRenderer.invoke('transactions:getByType', type),
     getByStatus: (status: string) => ipcRenderer.invoke('transactions:getByStatus', status),
+    getPendingTransferReview: () => ipcRenderer.invoke('transactions:getPendingTransferReview'),
+    setPendingTransferReview: (transactionId: number, pending: boolean) =>
+      ipcRenderer.invoke('transactions:setPendingTransferReview', transactionId, pending),
     getMonthlyActivity: (month: string, accountId?: number) => 
       ipcRenderer.invoke('transactions:getMonthlyActivity', month, accountId),
     autoCategorizeMonth: (month: string, accountId?: number) =>
       ipcRenderer.invoke('transactions:autoCategorizeMonth', month, accountId),
     createTransfer: (fromAccountId: number, toAccountId: number, amount: number, description?: string, date?: string) => 
       ipcRenderer.invoke('transactions:createTransfer', fromAccountId, toAccountId, amount, description, date),
+    convertPendingTransfer: (transactionId: number, fromAccountId: number, toAccountId: number) =>
+      ipcRenderer.invoke('transactions:convertPendingTransfer', transactionId, fromAccountId, toAccountId),
     recalculateBalances: () => ipcRenderer.invoke('transactions:recalculateBalances'),
     bulkAssignPayee: (transactionIds: number[], payeeId: number) => 
       ipcRenderer.invoke('transactions:bulkAssignPayee', transactionIds, payeeId),

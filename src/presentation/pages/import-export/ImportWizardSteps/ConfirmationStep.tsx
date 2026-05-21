@@ -63,13 +63,17 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
         {result?.success ? (
           <Typography variant="body2">
             Imported {result.importedTransactions} regular transactions and {result.importedTransfers} transfers.
-            {result.skippedCount > 0 ? ` Skipped ${result.skippedCount} transfer candidate(s).` : ''}
+            {result.skippedCount > 0
+              ? ` Deferred ${result.skippedCount} transfer candidate(s) for later review in Ledger.`
+              : ''}
             You can now view and manage them in the Transactions page.
           </Typography>
         ) : (
           <Typography variant="body2">
             Imported {result?.importedTransactions || 0} regular transactions and {result?.importedTransfers || 0} transfers.
-            {result && result.skippedCount > 0 ? ` Skipped ${result.skippedCount} candidate(s).` : ''}
+            {result && result.skippedCount > 0
+              ? ` Deferred ${result.skippedCount} transfer candidate(s) for later review.`
+              : ''}
             {result && result.failedCount > 0 ? ` ${result.failedCount} item(s) failed.` : ''}
           </Typography>
         )}

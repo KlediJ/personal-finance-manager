@@ -8,11 +8,14 @@ import {
   Container,
   FormControlLabel,
   RadioGroup,
-  Radio
+  Radio,
+  Button,
+  Stack
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CategoryIcon from '@mui/icons-material/Category';
 import PersonIcon from '@mui/icons-material/Person';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CategoriesPage from '../categories/CategoriesPage';
 import PayeesPage from '../payees/PayeesPage';
 
@@ -46,6 +49,7 @@ const TabPanel = (props: TabPanelProps) => {
 // General settings content
 const GeneralSettings = () => {
   const [envInfo, setEnvInfo] = useState<any | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [defaultExportFormat, setDefaultExportFormat] = useState<'csv' | 'excel'>(() => {
     try {
       if (typeof window === 'undefined') return 'csv';
@@ -81,6 +85,22 @@ const GeneralSettings = () => {
     }
   }, [defaultExportFormat]);
 
+  const handleCopy = async (key: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedKey(key);
+      window.setTimeout(() => {
+        setCopiedKey(current => (current === key ? null : current));
+      }, 1600);
+    } catch {
+      setCopiedKey(null);
+    }
+  };
+
+  const websiteUrl = 'https://desktop-libri.com';
+  const releasesUrl = 'https://github.com/KlediJ/personal-finance-manager/releases';
+  const sourceUrl = 'https://github.com/KlediJ/personal-finance-manager';
+
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
@@ -102,6 +122,98 @@ const GeneralSettings = () => {
             Data location: {envInfo.dbPath}
           </Typography>
         )}
+      </Paper>
+
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Typography variant="subtitle1" gutterBottom>
+          About Libri
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Libri is a private, local desktop finance tracker. Your data stays on this
+          computer unless you choose to export it.
+        </Typography>
+
+        <Stack spacing={1.5} sx={{ mb: 2 }}>
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Website
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Typography variant="body2" color="text.secondary">
+                {websiteUrl}
+              </Typography>
+              <Button
+                size="small"
+                startIcon={<ContentCopyIcon fontSize="small" />}
+                onClick={() => handleCopy('website', websiteUrl)}
+              >
+                {copiedKey === 'website' ? 'Copied' : 'Copy'}
+              </Button>
+            </Stack>
+          </Box>
+
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Releases
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Typography variant="body2" color="text.secondary">
+                {releasesUrl}
+              </Typography>
+              <Button
+                size="small"
+                startIcon={<ContentCopyIcon fontSize="small" />}
+                onClick={() => handleCopy('releases', releasesUrl)}
+              >
+                {copiedKey === 'releases' ? 'Copied' : 'Copy'}
+              </Button>
+            </Stack>
+          </Box>
+
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Source
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Typography variant="body2" color="text.secondary">
+                {sourceUrl}
+              </Typography>
+              <Button
+                size="small"
+                startIcon={<ContentCopyIcon fontSize="small" />}
+                onClick={() => handleCopy('source', sourceUrl)}
+              >
+                {copiedKey === 'source' ? 'Copied' : 'Copy'}
+              </Button>
+            </Stack>
+          </Box>
+
+          {envInfo?.dbPath && (
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Local data folder
+              </Typography>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                <Typography variant="body2" color="text.secondary">
+                  {envInfo.dbPath}
+                </Typography>
+                <Button
+                  size="small"
+                  startIcon={<ContentCopyIcon fontSize="small" />}
+                  onClick={() => handleCopy('dbPath', envInfo.dbPath)}
+                >
+                  {copiedKey === 'dbPath' ? 'Copied' : 'Copy'}
+                </Button>
+              </Stack>
+            </Box>
+          )}
+        </Stack>
+
+        <Typography variant="caption" color="text.secondary">
+          Windows may show a SmartScreen warning for new builds until reputation is
+          established. Download Libri only from the official website or the GitHub
+          releases page above.
+        </Typography>
       </Paper>
 
       <Paper sx={{ p: 2 }}>

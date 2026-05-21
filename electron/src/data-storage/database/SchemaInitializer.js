@@ -142,6 +142,7 @@ class SchemaInitializer {
         // Credit Card Transaction Logic enhancements - Phase 2
         this.addColumnIfMissing(db, 'transactions', 'transaction_subtype', "TEXT DEFAULT 'standard'");
         this.addColumnIfMissing(db, 'transactions', 'linked_transaction_id', 'INTEGER');
+        this.addColumnIfMissing(db, 'transactions', 'pending_transfer_review', 'INTEGER DEFAULT 0');
         console.log('Credit card transaction logic enhancements applied to transactions table');
         // Migrate existing transaction data
         this.migrateTransactionSubtypes(db);
@@ -154,6 +155,11 @@ class SchemaInitializer {
       UPDATE transactions 
       SET transaction_subtype = 'standard'
       WHERE transaction_subtype IS NULL;
+    `);
+        db.exec(`
+      UPDATE transactions
+      SET pending_transfer_review = 0
+      WHERE pending_transfer_review IS NULL;
     `);
         console.log('Transaction subtypes migrated successfully');
     }

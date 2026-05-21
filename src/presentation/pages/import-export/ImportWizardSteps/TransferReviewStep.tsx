@@ -17,30 +17,22 @@ import {
   Typography
 } from '@mui/material';
 import { Account } from '../../../../data-storage/models/Account';
-import { Transaction } from '../../../../data-storage/models/Transaction';
-
-type TransferResolution = 'transfer' | 'regular' | 'skip';
-
-interface TransferCandidate {
-  id: string;
-  transactionIndex: number;
-  transaction: Transaction;
-  detectedBy: string[];
-  resolution: TransferResolution;
-  fromAccountId: number | '';
-  toAccountId: number | '';
-}
+import { TransferCandidate, TransferResolution } from '../transferReviewUtils';
 
 interface TransferReviewStepProps {
   candidates: TransferCandidate[];
   accounts: Account[];
   onCandidateChange: (candidateId: string, updates: Partial<TransferCandidate>) => void;
+  onSkipAll?: () => void;
+  context?: 'import' | 'ledger';
 }
 
 const TransferReviewStep: React.FC<TransferReviewStepProps> = ({
   candidates,
   accounts,
-  onCandidateChange
+  onCandidateChange,
+  onSkipAll,
+  context = 'import'
 }) => {
   const formatAmount = (amount: number) =>
     new Intl.NumberFormat('en-US', {
@@ -64,19 +56,34 @@ const TransferReviewStep: React.FC<TransferReviewStepProps> = ({
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
-        Review Transfer Candidates
+        {context === 'ledger' ? 'Review Pending Transfers' : 'Review Transfer Candidates'}
       </Typography>
 
       {candidates.length === 0 ? (
         <Alert severity="success">
-          No transfer candidates were detected. The import will proceed with regular transactions only.
+          {context === 'ledger'
+            ? 'No pending transfer candidates need review right now.'
+            : 'No transfer candidates were detected. The import will proceed with regular transactions only.'}
         </Alert>
       ) : (
         <>
           <Alert severity="info" sx={{ mb: 3 }}>
-            Review transactions that look like transfers. Confirm the source and destination accounts,
-            keep the row as a normal transaction, or skip it for now.
+            {context === 'ledger'
+              ? 'Review transactions you deferred earlier. Confirm the source and destination accounts, keep the row as a normal transaction, or leave it pending for later.'
+              : 'Review transactions that look like transfers. Confirm the source and destination accounts, keep the row as a normal transaction, or skip it for now.'}
           </Alert>
+
+          {context === 'import' && onSkipAll && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Chip
+                label="Skip all for now"
+                color="warning"
+                variant="outlined"
+                onClick={onSkipAll}
+                clickable
+              />
+            </Box>
+          )}
 
           <TableContainer component={Paper} sx={{ maxHeight: 420 }}>
             <Table stickyHeader size="small">
@@ -202,7 +209,10 @@ const TransferReviewStep: React.FC<TransferReviewStepProps> = ({
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" color="text.secondary">
               Confirmed transfers will use Libri&apos;s linked transfer workflow. Items kept as regular
-              transactions will import as income or expense based on the sign of the amount.
+              transactions will stay in the ledger as income or expense based on the sign of the amount.
+              {context === 'import'
+                ? ' Items skipped for now will still be imported and marked for later transfer review.'
+                : ' Items skipped for now will remain marked for later transfer review.'}
             </Typography>
           </Box>
         </>

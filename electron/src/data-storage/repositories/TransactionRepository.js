@@ -24,7 +24,8 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
             updated_at: row.updated_at,
             // Credit Card Transaction Logic enhancements - Phase 2
             transaction_subtype: row.transaction_subtype,
-            linked_transaction_id: row.linked_transaction_id
+            linked_transaction_id: row.linked_transaction_id,
+            pending_transfer_review: Boolean(row.pending_transfer_review)
         };
     }
     /**
@@ -137,6 +138,28 @@ class TransactionRepository extends BaseRepository_1.BaseRepository {
       ORDER BY t.date DESC, t.transaction_id DESC
     `;
         return this.runQuery(query, [status]);
+    }
+    /**
+     * Get transactions that were deferred for later transfer review.
+     */
+    getPendingTransferReview() {
+        const query = `
+      SELECT t.*, p.name as payee_name, c.name as category_name
+      FROM ${this.tableName} t
+      LEFT JOIN payees p ON t.payee_id = p.payee_id
+      LEFT JOIN categories c ON t.category_id = c.category_id
+      WHERE t.pending_transfer_review = 1
+      ORDER BY t.date DESC, t.transaction_id DESC
+    `;
+        return this.runQuery(query, []);
+    }
+    /**
+     * Update the pending transfer review state for a transaction.
+     */
+    setPendingTransferReview(transactionId, pending) {
+        return this.update(transactionId, {
+            pending_transfer_review: pending
+        });
     }
     /**
      * Get all transactions for a given month (YYYY-MM) with related info,

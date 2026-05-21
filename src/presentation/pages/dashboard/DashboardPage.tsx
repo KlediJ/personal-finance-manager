@@ -48,12 +48,18 @@ const DashboardPage: React.FC = () => {
   const [selectedPivotCategory, setSelectedPivotCategory] = useState<string | null>(null);
 
   // Filters
+  const [periodMode, setPeriodMode] = useState<'current' | 'month'>('current');
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [selectedAccountId, setSelectedAccountId] = useState<number | 'all'>('all');
   const [selectedCategoryNames, setSelectedCategoryNames] = useState<string[] | 'all'>('all');
+
+  const getCurrentMonthKey = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  };
 
   // Date handling helpers for a given month key (YYYY-MM)
   const getMonthStartFromKey = (key: string) => {
@@ -78,6 +84,30 @@ const DashboardPage: React.FC = () => {
     const date = new Date(year, month - 1, 1);
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
+
+  const availableMonthOptions = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: 12 }).map((_, idx) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - idx, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return {
+        key,
+        label: d.toLocaleDateString('en-US', {
+          month: 'long',
+          year: 'numeric'
+        })
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (periodMode === 'current') {
+      const currentMonthKey = getCurrentMonthKey();
+      if (selectedMonthKey !== currentMonthKey) {
+        setSelectedMonthKey(currentMonthKey);
+      }
+    }
+  }, [periodMode, selectedMonthKey]);
 
   // Get dashboard data
   const loadDashboardData = async () => {
@@ -241,6 +271,8 @@ const DashboardPage: React.FC = () => {
       : 0;
 
   const monthLabel = getMonthLabelFromKey(selectedMonthKey);
+  const periodLabel =
+    periodMode === 'current' ? `Current month · ${monthLabel}` : monthLabel;
   const buildSankeyDrilldownUrl = (params: Record<string, string>) => {
     const search = new URLSearchParams({
       sankeyMonth: selectedMonthKey,
@@ -377,10 +409,80 @@ const DashboardPage: React.FC = () => {
         </Paper>
       ) : (
         <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <Paper sx={{ p: 2 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: 1.5
+                }}
+              >
+                <Typography variant="subtitle2" color="text.secondary">
+                  Period
+                </Typography>
+                <Chip
+                  label="Current month"
+                  color={periodMode === 'current' ? 'primary' : 'default'}
+                  variant={periodMode === 'current' ? 'filled' : 'outlined'}
+                  onClick={() => setPeriodMode('current')}
+                  clickable
+                />
+                <Chip
+                  label="Choose month"
+                  color={periodMode === 'month' ? 'primary' : 'default'}
+                  variant={periodMode === 'month' ? 'filled' : 'outlined'}
+                  onClick={() => setPeriodMode('month')}
+                  clickable
+                />
+                {periodMode === 'month' && (
+                  <Select
+                    size="small"
+                    value={selectedMonthKey}
+                    onChange={(e) => setSelectedMonthKey(e.target.value as string)}
+                    sx={{ minWidth: 180 }}
+                  >
+                    {availableMonthOptions.map((option) => (
+                      <MenuItem key={option.key} value={option.key}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                )}
+                <Box sx={{ flexGrow: 1 }} />
+                <Typography variant="subtitle2" color="text.secondary">
+                  Account
+                </Typography>
+                <Select
+                  size="small"
+                  value={selectedAccountId === 'all' ? 'all' : selectedAccountId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelectedAccountId(
+                      value === 'all' ? 'all' : Number(value)
+                    );
+                  }}
+                  sx={{ minWidth: 180 }}
+                >
+                  <MenuItem value="all">All Accounts</MenuItem>
+                  {accounts.map((account: any) => (
+                    <MenuItem
+                      key={account.account_id}
+                      value={account.account_id}
+                    >
+                      {account.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </Box>
+            </Paper>
+          </Grid>
+
           {rangeTransactions.length === 0 && (
             <Grid item xs={12}>
               <Alert severity="info">
-                No transactions were found for the selected month and account filter yet.
+                No transactions were found for the selected period and account filter yet.
               </Alert>
             </Grid>
           )}
@@ -389,7 +491,7 @@ const DashboardPage: React.FC = () => {
           <Grid item xs={12} md={3}>
             <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
               <Typography color="textSecondary" gutterBottom variant="subtitle2">
-                Net This Month
+                Net
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
                 <Box>
@@ -400,7 +502,7 @@ const DashboardPage: React.FC = () => {
                     })}
                   </Typography>
                   <Typography color="textSecondary" sx={{ mt: 1 }}>
-                    {monthLabel}
+                    {periodLabel}
                   </Typography>
                 </Box>
                 <AccountBalanceWalletIcon 
@@ -416,7 +518,7 @@ const DashboardPage: React.FC = () => {
           <Grid item xs={12} md={3}>
             <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
               <Typography color="textSecondary" gutterBottom variant="subtitle2">
-                Income This Month
+                Income
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
                 <Box>
@@ -427,7 +529,7 @@ const DashboardPage: React.FC = () => {
                     })}
                   </Typography>
                   <Typography color="textSecondary" sx={{ mt: 1 }}>
-                    {monthLabel}
+                    {periodLabel}
                   </Typography>
                 </Box>
                 <ArrowUpwardIcon 
@@ -443,7 +545,7 @@ const DashboardPage: React.FC = () => {
           <Grid item xs={12} md={3}>
             <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
               <Typography color="textSecondary" gutterBottom variant="subtitle2">
-                Expenses This Month
+                Expenses
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
                 <Box>
@@ -488,7 +590,7 @@ const DashboardPage: React.FC = () => {
           <Grid item xs={12} md={3}>
             <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
               <Typography color="textSecondary" gutterBottom variant="subtitle2">
-                Categorization (This Month)
+                Categorization
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
                 <Box>
@@ -509,10 +611,10 @@ const DashboardPage: React.FC = () => {
           <Grid item xs={12}>
             <Paper sx={{ p: 2.5 }}>
               <Typography variant="h6" gutterBottom>
-                Monthly Spending Flow
+                Spending Flow
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Follow this month&apos;s expense flow from categories into merchants for the selected account filter.
+                Follow expense flow from categories into merchants for the selected period and account filter.
               </Typography>
               <MonthlySpendingSankey
                 transactions={rangeTransactions}
@@ -580,55 +682,12 @@ const DashboardPage: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
-                <Typography variant="body2">in</Typography>
-                <Select
+                <Typography variant="body2">during</Typography>
+                <Chip
+                  label={periodLabel}
                   size="small"
-                  value={selectedMonthKey}
-                  onChange={(e) => setSelectedMonthKey(e.target.value as string)}
-                  sx={{ minWidth: 140 }}
-                >
-                  {Array.from({ length: 12 }).map((_, idx) => {
-                    const now = new Date();
-                    const d = new Date(
-                      now.getFullYear(),
-                      now.getMonth() - idx,
-                      1
-                    );
-                    const key = `${d.getFullYear()}-${String(
-                      d.getMonth() + 1
-                    ).padStart(2, '0')}`;
-                    return (
-                      <MenuItem key={key} value={key}>
-                        {d.toLocaleDateString('en-US', {
-                          month: 'long',
-                          year: 'numeric'
-                        })}
-                      </MenuItem>
-                    );
-                  })}
-                </Select>
-                <Typography variant="body2">in</Typography>
-                <Select
-                  size="small"
-                  value={selectedAccountId === 'all' ? 'all' : selectedAccountId}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setSelectedAccountId(
-                      value === 'all' ? 'all' : Number(value)
-                    );
-                  }}
-                  sx={{ minWidth: 160 }}
-                >
-                  <MenuItem value="all">All Accounts</MenuItem>
-                  {accounts.map((account: any) => (
-                    <MenuItem
-                      key={account.account_id}
-                      value={account.account_id}
-                    >
-                      {account.name}
-                    </MenuItem>
-                  ))}
-                </Select>
+                  variant="outlined"
+                />
               </Box>
               <Box sx={{ height: 300 }}>
                 <CategoryBreakdown

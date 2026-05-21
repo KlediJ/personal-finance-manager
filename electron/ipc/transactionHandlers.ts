@@ -135,6 +135,30 @@ export function setupTransactionHandlers(): void {
     }
   });
 
+  // Get transactions pending later transfer review
+  ipcMain.handle('transactions:getPendingTransferReview', async () => {
+    try {
+      return transactionRepository.getPendingTransferReview();
+    } catch (error) {
+      console.error('Error getting pending transfer review transactions:', error);
+      throw error;
+    }
+  });
+
+  // Update pending transfer review state for a transaction
+  ipcMain.handle(
+    'transactions:setPendingTransferReview',
+    async (_, transactionId: number, pending: boolean) => {
+      try {
+        const success = transactionRepository.setPendingTransferReview(transactionId, pending);
+        return { success };
+      } catch (error) {
+        console.error(`Error setting pending transfer review for transaction ${transactionId}:`, error);
+        throw error;
+      }
+    }
+  );
+
   // Bulk delete transactions with per-transaction accounting cleanup.
   ipcMain.handle('transactions:bulkDelete', async (_, ids: number[]) => {
     try {
@@ -272,6 +296,23 @@ export function setupTransactionHandlers(): void {
       throw error;
     }
   });
+
+  // Convert a previously imported pending-review transaction into a linked transfer
+  ipcMain.handle(
+    'transactions:convertPendingTransfer',
+    async (_, transactionId: number, fromAccountId: number, toAccountId: number) => {
+      try {
+        return accountingService.convertPendingTransferReview(
+          transactionId,
+          fromAccountId,
+          toAccountId
+        );
+      } catch (error) {
+        console.error(`Error converting pending transfer ${transactionId}:`, error);
+        throw error;
+      }
+    }
+  );
 
   // Recalculate all account balances
   ipcMain.handle('transactions:recalculateBalances', async () => {

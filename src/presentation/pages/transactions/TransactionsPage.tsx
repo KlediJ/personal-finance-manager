@@ -48,6 +48,11 @@ import TransactionFormDialog from './TransactionFormDialog';
 import ImportWizard from '../import-export/ImportWizard';
 import ExportDialog from '../import-export/ExportDialog';
 import TransferDialog from '../../components/TransferDialog';
+import TransferReviewStep from '../import-export/ImportWizardSteps/TransferReviewStep';
+import {
+  buildPendingTransferCandidates,
+  TransferCandidate
+} from '../import-export/transferReviewUtils';
 
 const TransactionsPage: React.FC = () => {
   // State for transactions and loading
@@ -70,6 +75,9 @@ const TransactionsPage: React.FC = () => {
   
   // State for transfer dialog
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [pendingTransferReviewOpen, setPendingTransferReviewOpen] = useState(false);
+  const [pendingTransferCandidates, setPendingTransferCandidates] = useState<TransferCandidate[]>([]);
+  const [savingPendingTransfers, setSavingPendingTransfers] = useState(false);
   
   // State for filters
   const [filterOpen, setFilterOpen] = useState(false);
@@ -80,7 +88,7 @@ const TransactionsPage: React.FC = () => {
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | ''>('');
   const [reviewFilter, setReviewFilter] = useState<
-    '' | 'needs_review' | 'needs_category' | 'needs_payee' | 'ready'
+    '' | 'needs_review' | 'needs_transfer' | 'needs_category' | 'needs_payee' | 'ready'
   >('');
   const [amountMin, setAmountMin] = useState<string>('');
   const [amountMax, setAmountMax] = useState<string>('');
@@ -394,6 +402,126 @@ const TransactionsPage: React.FC = () => {
     loadTransactions();
   };
 
+  const handleOpenPendingTransferReview = async () => {
+    try {
+      const pendingTransactions = await window.api.transactions.getPendingTransferReview();
+      const candidates = buildPendingTransferCandidates(pendingTransactions, accounts);
+
+      if (candidates.length === 0) {
+        setSnackbar({
+          open: true,
+          message: 'There are no pending transfers to review right now.',
+          severity: 'warning'
+        });
+        return;
+      }
+
+      setPendingTransferCandidates(candidates);
+      setPendingTransferReviewOpen(true);
+    } catch (error) {
+      console.error('Error loading pending transfer review candidates:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to load pending transfers for review',
+        severity: 'error'
+      });
+    }
+  };
+
+  const handlePendingTransferCandidateChange = (
+    candidateId: string,
+    updates: Partial<TransferCandidate>
+  ) => {
+    setPendingTransferCandidates((prev) =>
+      prev.map((candidate) =>
+        candidate.id === candidateId ? { ...candidate, ...updates } : candidate
+      )
+    );
+  };
+
+  const canSavePendingTransferReview = useMemo(
+    () =>
+      !pendingTransferCandidates.some((candidate) => {
+        if (candidate.resolution !== 'transfer') {
+          return false;
+        }
+
+        return (
+          !candidate.transaction.transaction_id ||
+          !candidate.fromAccountId ||
+          !candidate.toAccountId ||
+          candidate.fromAccountId === candidate.toAccountId
+        );
+      }),
+    [pendingTransferCandidates]
+  );
+
+  const handleSavePendingTransferReview = async () => {
+    setSavingPendingTransfers(true);
+
+    try {
+      let convertedCount = 0;
+      let clearedCount = 0;
+      let deferredCount = 0;
+
+      for (const candidate of pendingTransferCandidates) {
+        const transactionId = candidate.transaction.transaction_id;
+        if (!transactionId) {
+          continue;
+        }
+
+        if (candidate.resolution === 'transfer') {
+          const result = await window.api.transactions.convertPendingTransfer(
+            transactionId,
+            Number(candidate.fromAccountId),
+            Number(candidate.toAccountId)
+          );
+
+          if (result.success) {
+            convertedCount++;
+          }
+          continue;
+        }
+
+        if (candidate.resolution === 'regular') {
+          const result = await window.api.transactions.setPendingTransferReview(
+            transactionId,
+            false
+          );
+
+          if (result.success) {
+            clearedCount++;
+          }
+          continue;
+        }
+
+        deferredCount++;
+      }
+
+      setPendingTransferReviewOpen(false);
+      setPendingTransferCandidates([]);
+      await loadTransactions();
+
+      setSnackbar({
+        open: true,
+        message:
+          deferredCount > 0
+            ? `Reviewed transfers. Converted ${convertedCount}, kept ${clearedCount} as regular, left ${deferredCount} pending.`
+            : `Reviewed transfers. Converted ${convertedCount} and kept ${clearedCount} as regular.`,
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error saving pending transfer review:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to save transfer review changes',
+        severity: 'error'
+      });
+    } finally {
+      setSavingPendingTransfers(false);
+    }
+  };
+
   // Open form for creating a new transaction
   const handleAddTransaction = () => {
     setCurrentTransaction(null);
@@ -638,7 +766,14 @@ const TransactionsPage: React.FC = () => {
     }
 
     if (reviewFilter === 'needs_review') {
-      data = data.filter((t: any) => !t.category_id || !(t.payee_name || '').trim());
+      data = data.filter(
+        (t: any) =>
+          t.pending_transfer_review || !t.category_id || !(t.payee_name || '').trim()
+      );
+    }
+
+    if (reviewFilter === 'needs_transfer') {
+      data = data.filter((t: any) => t.pending_transfer_review);
     }
 
     if (reviewFilter === 'needs_category') {
@@ -650,7 +785,10 @@ const TransactionsPage: React.FC = () => {
     }
 
     if (reviewFilter === 'ready') {
-      data = data.filter((t: any) => t.category_id && (t.payee_name || '').trim());
+      data = data.filter(
+        (t: any) =>
+          !t.pending_transfer_review && t.category_id && (t.payee_name || '').trim()
+      );
     }
 
     const min =
@@ -740,13 +878,20 @@ const TransactionsPage: React.FC = () => {
   const hasAccounts = accounts.length > 0;
   const canCreateTransfers = accounts.length > 1;
   const reviewCounts = useMemo(() => {
+    const pendingTransfers = transactions.filter(
+      (transaction) => transaction.pending_transfer_review
+    ).length;
     const uncategorized = transactions.filter((transaction) => !transaction.category_id).length;
     const noPayee = transactions.filter((transaction) => !(transaction.payee_name || '').trim()).length;
     const needsReview = transactions.filter(
-      (transaction) => !transaction.category_id || !(transaction.payee_name || '').trim()
+      (transaction) =>
+        transaction.pending_transfer_review ||
+        !transaction.category_id ||
+        !(transaction.payee_name || '').trim()
     ).length;
 
     return {
+      pendingTransfers,
       uncategorized,
       noPayee,
       needsReview,
@@ -801,6 +946,14 @@ const TransactionsPage: React.FC = () => {
           >
             Transfer
           </Button>
+          <Button
+            variant="outlined"
+            color="warning"
+            onClick={handleOpenPendingTransferReview}
+            disabled={!hasAccounts}
+          >
+            Review Transfers{reviewCounts.pendingTransfers > 0 ? ` (${reviewCounts.pendingTransfers})` : ''}
+          </Button>
         </Box>
       </Box>
 
@@ -846,6 +999,14 @@ const TransactionsPage: React.FC = () => {
             variant={reviewFilter === 'needs_review' ? 'filled' : 'outlined'}
             onClick={() =>
               setReviewFilter((prev) => (prev === 'needs_review' ? '' : 'needs_review'))
+            }
+          />
+          <Chip
+            label={`Pending Transfers (${reviewCounts.pendingTransfers})`}
+            color={reviewFilter === 'needs_transfer' ? 'warning' : 'default'}
+            variant={reviewFilter === 'needs_transfer' ? 'filled' : 'outlined'}
+            onClick={() =>
+              setReviewFilter((prev) => (prev === 'needs_transfer' ? '' : 'needs_transfer'))
             }
           />
           <Chip
@@ -997,6 +1158,7 @@ const TransactionsPage: React.FC = () => {
                 onChange={(e) =>
                   setReviewFilter(
                     e.target.value as '' | 'needs_review' | 'needs_category' | 'needs_payee' | 'ready'
+                    | 'needs_transfer'
                   )
                 }
               >
@@ -1004,6 +1166,7 @@ const TransactionsPage: React.FC = () => {
                   <em>All Transactions</em>
                 </MenuItem>
                 <MenuItem value="needs_review">Needs Review</MenuItem>
+                <MenuItem value="needs_transfer">Pending Transfers</MenuItem>
                 <MenuItem value="needs_category">Uncategorized</MenuItem>
                 <MenuItem value="needs_payee">No Payee</MenuItem>
                 <MenuItem value="ready">Ready</MenuItem>
@@ -1293,6 +1456,37 @@ const TransactionsPage: React.FC = () => {
           }
         }}
       />
+
+      <Dialog
+        open={pendingTransferReviewOpen}
+        onClose={() => setPendingTransferReviewOpen(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <Box sx={{ p: 3 }}>
+          <TransferReviewStep
+            candidates={pendingTransferCandidates}
+            accounts={accounts}
+            onCandidateChange={handlePendingTransferCandidateChange}
+            context="ledger"
+          />
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 3 }}>
+            <Button
+              onClick={() => setPendingTransferReviewOpen(false)}
+              disabled={savingPendingTransfers}
+            >
+              Close
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSavePendingTransferReview}
+              disabled={savingPendingTransfers || !canSavePendingTransferReview}
+            >
+              {savingPendingTransfers ? 'Saving...' : 'Save Review'}
+            </Button>
+          </Box>
+        </Box>
+      </Dialog>
     </Box>
   );
 };

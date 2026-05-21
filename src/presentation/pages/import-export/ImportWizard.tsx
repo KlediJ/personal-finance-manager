@@ -24,6 +24,11 @@ import { Transaction, TransactionType } from '../../../data-storage/models/Trans
 import { Category, CategoryType } from '../../../data-storage/models/Category';
 import { Payee } from '../../../data-storage/models/Payee';
 import { fingerprintDescription } from '../../../data-processing/ai/FingerprintUtil';
+import {
+  buildImportTransferCandidates,
+  normalizeTransferCandidateAsRegular,
+  TransferCandidate
+} from './transferReviewUtils';
 
 interface ImportWizardProps {
   open: boolean;
@@ -39,18 +44,6 @@ const steps = [
   'Import'
 ];
 
-type TransferResolution = 'transfer' | 'regular' | 'skip';
-
-interface TransferCandidate {
-  id: string;
-  transactionIndex: number;
-  transaction: Transaction;
-  detectedBy: string[];
-  resolution: TransferResolution;
-  fromAccountId: number | '';
-  toAccountId: number | '';
-}
-
 interface ImportResultSummary {
   success: boolean;
   count: number;
@@ -65,16 +58,6 @@ interface CategorizationReviewStats {
   groupedCount: number;
   singletonCount: number;
 }
-
-const TRANSFER_KEYWORD_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /\btransfer\b/i, reason: 'Description contains "transfer"' },
-  { pattern: /\bxfer\b/i, reason: 'Description contains "xfer"' },
-  { pattern: /\bmove money\b/i, reason: 'Description contains "move money"' },
-  { pattern: /\bfunds transfer\b/i, reason: 'Description contains "funds transfer"' },
-  { pattern: /\bonline transfer\b/i, reason: 'Description contains "online transfer"' },
-  { pattern: /\bpayment thank you\b/i, reason: 'Description contains "payment thank you"' },
-  { pattern: /\bcard payment\b/i, reason: 'Description contains "card payment"' }
-];
 
 const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
   // State for the wizard
@@ -238,63 +221,6 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
       ...mappings,
       [field]: value
     });
-  };
-
-  const detectTransferCandidates = (
-    transactions: Transaction[],
-    availableAccounts: Account[]
-  ): TransferCandidate[] => {
-    return transactions.flatMap((transaction, transactionIndex) => {
-      const detectedBy: string[] = [];
-      const description = `${transaction.description || ''} ${transaction.payee_name || ''}`.trim();
-
-      if (transaction.transaction_type === TransactionType.TRANSFER) {
-        detectedBy.push('Transaction type mapped as transfer');
-      }
-
-      for (const rule of TRANSFER_KEYWORD_PATTERNS) {
-        if (rule.pattern.test(description)) {
-          detectedBy.push(rule.reason);
-        }
-      }
-
-      if (detectedBy.length === 0) {
-        return [];
-      }
-
-      const importedAccountExists = availableAccounts.some(
-        (account) => account.account_id === transaction.account_id
-      );
-
-      const defaultFromAccountId =
-        transaction.amount < 0 && importedAccountExists ? transaction.account_id : '';
-      const defaultToAccountId =
-        transaction.amount > 0 && importedAccountExists ? transaction.account_id : '';
-
-      return [{
-        id: `${transactionIndex}-${transaction.date}-${transaction.amount}-${transaction.description || 'transaction'}`,
-        transactionIndex,
-        transaction,
-        detectedBy: Array.from(new Set(detectedBy)),
-        resolution: 'transfer' as TransferResolution,
-        fromAccountId: defaultFromAccountId,
-        toAccountId: defaultToAccountId
-      }];
-    });
-  };
-
-  const normalizeTransferCandidateAsRegular = (transaction: Transaction): Transaction => {
-    if (transaction.transaction_type !== TransactionType.TRANSFER) {
-      return transaction;
-    }
-
-    return {
-      ...transaction,
-      transaction_type:
-        transaction.amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
-      transaction_subtype: undefined,
-      linked_transaction_id: undefined
-    };
   };
 
   const buildCategorizationGroups = async (transactions: Transaction[]) => {
@@ -622,7 +548,7 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
       setImportStats(result.stats);
       await buildCategorizationGroups(result.validTransactions || []);
       setTransferCandidates(
-        detectTransferCandidates(result.validTransactions || [], availableAccounts)
+        buildImportTransferCandidates(result.validTransactions || [], availableAccounts)
       );
 
       if (!result.success) {
@@ -650,12 +576,18 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
         transferCandidates.map((candidate) => [candidate.transactionIndex, candidate])
       );
 
-      const regularTransactions = validatedData
-        .filter((transaction, index) => {
-          const candidate = candidateMap.get(index);
-          return !candidate || candidate.resolution === 'regular';
-        })
-        .map(normalizeTransferCandidateAsRegular);
+      const regularTransactions = validatedData.flatMap((transaction, index) => {
+        const candidate = candidateMap.get(index);
+        if (candidate?.resolution === 'transfer') {
+          return [];
+        }
+
+        return [
+          normalizeTransferCandidateAsRegular(transaction, {
+            pendingTransferReview: candidate?.resolution === 'skip'
+          })
+        ];
+      });
 
       const transferRows = transferCandidates.filter(
         (candidate) => candidate.resolution === 'transfer'
@@ -896,6 +828,15 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
                 candidates={transferCandidates}
                 accounts={accounts}
                 onCandidateChange={handleTransferCandidateChange}
+                onSkipAll={() =>
+                  setTransferCandidates((prev) =>
+                    prev.map((candidate) => ({
+                      ...candidate,
+                      resolution: 'skip'
+                    }))
+                  )
+                }
+                context="import"
               />
             )}
 

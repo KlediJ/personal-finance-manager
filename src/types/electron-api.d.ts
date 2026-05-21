@@ -47,6 +47,8 @@ declare global {
         getByCategory: (categoryId: number) => Promise<Transaction[]>;
         getByType: (type: string) => Promise<Transaction[]>;
         getByStatus: (status: string) => Promise<Transaction[]>;
+        getPendingTransferReview: () => Promise<Transaction[]>;
+        setPendingTransferReview: (transactionId: number, pending: boolean) => Promise<{ success: boolean }>;
         getMonthlyActivity: (month: string, accountId?: number) => Promise<{
           success: boolean;
           transactions?: Transaction[];
@@ -61,6 +63,11 @@ declare global {
           message?: string;
           error?: string;
         }>;
+        convertPendingTransfer: (
+          transactionId: number,
+          fromAccountId: number,
+          toAccountId: number
+        ) => Promise<{ fromTransactionId: number, toTransactionId: number, success: boolean }>;
       };
       categories: {
         getAll: () => Promise<Category[]>;

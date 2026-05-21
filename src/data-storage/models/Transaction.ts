@@ -37,4 +37,5 @@ export interface Transaction {
   // Credit Card Transaction Logic enhancements - Phase 2
   transaction_subtype?: TransactionSubtype;
   linked_transaction_id?: number | null;
+  pending_transfer_review?: boolean;
 }

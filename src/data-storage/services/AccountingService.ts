@@ -253,67 +253,52 @@ export class AccountingService {
   ): { fromTransactionId: number; toTransactionId: number; success: boolean } {
     const dbManager = DatabaseManager.getInstance();
     const db = DatabaseConnection.getInstance();
-    const transactionRepo = dbManager.getTransactionRepository();
-    const accountRepo = dbManager.getAccountRepository();
     
     // Wrap all operations in a database transaction for atomicity
-    return db.transaction(() => {
-      const fromAccount = accountRepo.getById(fromAccountId);
-      const toAccount = accountRepo.getById(toAccountId);
-      
-      if (!fromAccount || !toAccount) {
-        throw new Error('One or both accounts not found');
-      }
-      
-      const transferDate = date || new Date().toISOString().split('T')[0];
-      const transferAmount = Math.abs(amount);
-      
-      // Create "from" transaction (outgoing transfer)
-      const fromTransaction: Transaction = {
-        account_id: fromAccountId,
-        date: transferDate,
-        amount: -transferAmount,
-        description: description || `Transfer to ${toAccount.name}`,
-        transaction_type: TransactionType.TRANSFER,
-        transaction_subtype: TransactionSubtype.INTERNAL_TRANSFER,
-        status: 'cleared' as any
-      };
-      
-      // Create "to" transaction (incoming transfer)
-      const toTransaction: Transaction = {
-        account_id: toAccountId,
-        date: transferDate,
-        amount: transferAmount,
-        description: description || `Transfer from ${fromAccount.name}`,
-        transaction_type: TransactionType.TRANSFER,
-        transaction_subtype: TransactionSubtype.INTERNAL_TRANSFER,
-        status: 'cleared' as any
-      };
-      
-      const fromTransactionId = transactionRepo.create(fromTransaction);
-      const toTransactionId = transactionRepo.create(toTransaction);
+    return db.transaction(() =>
+      this.createTransferRecords(fromAccountId, toAccountId, amount, description, date)
+    )();
+  }
 
-      transactionRepo.update(fromTransactionId, {
-        linked_transaction_id: toTransactionId
-      });
-      transactionRepo.update(toTransactionId, {
-        linked_transaction_id: fromTransactionId
-      });
-      
-      // Create journal entries for the transfer
-      this.journalEntryRepository.createDoubleEntry(
-        fromTransactionId,
-        toAccountId,    // Debit destination account
-        fromAccountId,  // Credit source account
-        transferAmount,
-        description || 'Account transfer'
+  /**
+   * Convert a previously imported regular transaction into a linked transfer.
+   */
+  public convertPendingTransferReview(
+    transactionId: number,
+    fromAccountId: number,
+    toAccountId: number
+  ): { fromTransactionId: number; toTransactionId: number; success: boolean } {
+    const dbManager = DatabaseManager.getInstance();
+    const db = DatabaseConnection.getInstance();
+    const transactionRepo = dbManager.getTransactionRepository();
+
+    return db.transaction(() => {
+      const transaction = transactionRepo.getById(transactionId);
+      if (!transaction) {
+        throw new Error('Transaction not found');
+      }
+
+      if (!transaction.pending_transfer_review) {
+        throw new Error('Transaction is not pending transfer review');
+      }
+
+      if (this.isTransferTransaction(transaction)) {
+        throw new Error('Transaction is already a transfer');
+      }
+
+      // Remove the previously imported regular transaction before replacing it
+      // with the linked transfer pair.
+      this.reverseTransaction(transaction);
+      this.journalEntryRepository.deleteByTransactionId(transactionId);
+      transactionRepo.delete(transactionId);
+
+      return this.createTransferRecords(
+        fromAccountId,
+        toAccountId,
+        Math.abs(transaction.amount),
+        transaction.description,
+        transaction.date
       );
-      
-      // Update account balances
-      this.updateAccountBalance(fromAccountId);
-      this.updateAccountBalance(toAccountId);
-      
-      return { fromTransactionId, toTransactionId, success: true };
     })();
   }
   
@@ -322,6 +307,73 @@ export class AccountingService {
    */
   private updateAccountBalances(transaction: Transaction): void {
     this.updateAccountBalance(transaction.account_id);
+  }
+
+  private createTransferRecords(
+    fromAccountId: number,
+    toAccountId: number,
+    amount: number,
+    description?: string,
+    date?: string
+  ): { fromTransactionId: number; toTransactionId: number; success: boolean } {
+    const dbManager = DatabaseManager.getInstance();
+    const transactionRepo = dbManager.getTransactionRepository();
+    const accountRepo = dbManager.getAccountRepository();
+
+    const fromAccount = accountRepo.getById(fromAccountId);
+    const toAccount = accountRepo.getById(toAccountId);
+
+    if (!fromAccount || !toAccount) {
+      throw new Error('One or both accounts not found');
+    }
+
+    const transferDate = date || new Date().toISOString().split('T')[0];
+    const transferAmount = Math.abs(amount);
+
+    const fromTransaction: Transaction = {
+      account_id: fromAccountId,
+      date: transferDate,
+      amount: -transferAmount,
+      description: description || `Transfer to ${toAccount.name}`,
+      transaction_type: TransactionType.TRANSFER,
+      transaction_subtype: TransactionSubtype.INTERNAL_TRANSFER,
+      status: 'cleared' as any,
+      pending_transfer_review: false
+    };
+
+    const toTransaction: Transaction = {
+      account_id: toAccountId,
+      date: transferDate,
+      amount: transferAmount,
+      description: description || `Transfer from ${fromAccount.name}`,
+      transaction_type: TransactionType.TRANSFER,
+      transaction_subtype: TransactionSubtype.INTERNAL_TRANSFER,
+      status: 'cleared' as any,
+      pending_transfer_review: false
+    };
+
+    const fromTransactionId = transactionRepo.create(fromTransaction);
+    const toTransactionId = transactionRepo.create(toTransaction);
+
+    transactionRepo.update(fromTransactionId, {
+      linked_transaction_id: toTransactionId
+    });
+    transactionRepo.update(toTransactionId, {
+      linked_transaction_id: fromTransactionId
+    });
+
+    this.journalEntryRepository.createDoubleEntry(
+      fromTransactionId,
+      toAccountId,
+      fromAccountId,
+      transferAmount,
+      description || 'Account transfer'
+    );
+
+    this.updateAccountBalance(fromAccountId);
+    this.updateAccountBalance(toAccountId);
+
+    return { fromTransactionId, toTransactionId, success: true };
   }
   
   /**

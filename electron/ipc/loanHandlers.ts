@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron';
+import { secureIpcMain as ipcMain } from '../security/ipc';
+
 import { LoanRepository, AmortizationScheduleRepository } from '../../src/data-storage/repositories/LoanRepository';
 import { LoanDetails, AmortizationSchedule, LoanType } from '../../src/data-storage/models/LoanDetails';
 

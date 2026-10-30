@@ -596,53 +596,16 @@ const ImportWizard: React.FC<ImportWizardProps> = ({ open, onClose }) => {
         (candidate) => candidate.resolution === 'skip'
       ).length;
 
-      let importedTransfers = 0;
-      const importErrors: string[] = [];
-
-      for (const candidate of transferRows) {
-        try {
-          if (
-            !candidate.fromAccountId ||
-            !candidate.toAccountId ||
-            candidate.fromAccountId === candidate.toAccountId
-          ) {
-            importErrors.push(
-              `Transfer "${candidate.transaction.description || 'transaction'}" is missing valid source and destination accounts.`
-            );
-            continue;
-          }
-
-          const result = await window.api.transactions.createTransfer(
-            Number(candidate.fromAccountId),
-            Number(candidate.toAccountId),
-            Math.abs(candidate.transaction.amount),
-            candidate.transaction.description,
-            candidate.transaction.date
-          );
-
-          if (result.success) {
-            importedTransfers++;
-          } else {
-            importErrors.push(
-              `Failed to create transfer "${candidate.transaction.description || 'transaction'}".`
-            );
-          }
-        } catch (transferError: any) {
-          console.error('Error creating transfer during import:', transferError);
-          importErrors.push(
-            `Failed to create transfer "${candidate.transaction.description || 'transaction'}": ${transferError?.message || 'Unknown error'}`
-          );
-        }
-      }
-
-      let importedTransactions = 0;
-      if (regularTransactions.length > 0) {
-        const result = await window.api.import.saveTransactions(regularTransactions);
-        importedTransactions = result.count || 0;
-        if (!result.success) {
-          importErrors.push(result.error || 'Some regular transactions failed to import.');
-        }
-      }
+      const result = await window.api.import.saveTransactions(regularTransactions, transferRows.map(candidate => ({
+        fromAccountId: Number(candidate.fromAccountId),
+        toAccountId: Number(candidate.toAccountId),
+        amount: Math.abs(candidate.transaction.amount),
+        description: candidate.transaction.description,
+        date: candidate.transaction.date
+      })));
+      const importedTransfers = result.importedTransfers || 0;
+      const importedTransactions = result.importedTransactions || 0;
+      const importErrors = result.success ? [] : [result.error || 'Import failed; no rows were saved.'];
 
       const totalImported = importedTransactions + importedTransfers;
       const failedCount =

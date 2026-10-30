@@ -1,0 +1,87 @@
+Libri security changes — 2026-10-30
+
+Completed locally; no release was published and no real financial database was opened.
+
+Runtime and dependencies
+- Electron 45.1.0, better-sqlite3 13.0.3, maintained router and build tooling.
+- Removed unused ONNX runtimes and the direct Lodash dependency. Active rule-based
+  categorization and user feedback remain available. Unfinished electron/ai prototypes
+  remain in source but are excluded from compilation and packaging.
+- Patched compatible ExcelJS dependencies and legacy glob dependencies through
+  documented package.json overrides. npm install reported zero vulnerabilities
+  across the full 771-package audit, including development dependencies.
+- package-lock.json is no longer ignored. Include it with the source changes.
+- Use Node 22.15+ (tested with bundled Node 24.19.0; .node-version pins that version).
+  The computer's default Node 20.16 is too old. .npmrc rejects incompatible installs.
+
+Application boundaries
+- Every production IPC handler checks the sender, top-level frame and exact app URL.
+- Explicit renderer sandbox, content security policy, denied permissions, popups,
+  remote navigation, redirects, webviews and automatic downloads.
+- Imports/exports require a native-dialog grant bound to the originating window,
+  selected path and extension. Export grants are single-use and revoked on cancellation.
+- Import limits: 25 MB input, 50,000 rows and 200 columns; Excel ZIP validation bounds
+  actual decompression to 100 MB and 10,000 entries before ExcelJS parses the workbook.
+- CSV formula-looking text is escaped; numeric amounts retain their numeric values.
+
+Data correctness and privacy
+- Explicit US-style amount parsing preserves grouping and parentheses negatives;
+  invalid or ambiguous formats are rejected instead of being partially parsed.
+- Mixed regular/transfer import batches commit in one SQLite transaction or roll back.
+  This prevents partial-import retries; it is not a full duplicate detection system.
+- Removed automatic ingestion of developer CSVs from the working directory.
+- Bank-training CSV remains on disk and is ignored. On October 30, 2026, both
+  historical bank-input paths were removed from public Git history. A fresh mirror
+  verified all 16 public refs and confirmed the sensitive contents are unreachable.
+  GitHub Support still needs to purge cached old commits; a local request is prepared.
+
+Packaging
+- Replaced the broad dist/**/* inclusion with explicit frontend artifact patterns.
+- Fresh unsigned Windows directory build: work/security-package/win-unpacked.
+- Package inspection found no nested archives/installers, CSVs, databases or ONNX
+  runtime files. The app.asar shrank from 3,182 MB to 89 MB (97% reduction).
+  This measures the archive, not a new compressed installer or Microsoft Store download.
+- Existing dist release artifacts were retained; they are not the new secured release.
+
+Validation
+- Production Webpack build and Electron TypeScript compilation passed.
+- Six security test groups passed: amounts, CSV formulas, IPC authorization, file
+  authorization, Excel ZIP limits and packaging/registrar invariants.
+- Fifteen real Electron 45/SQLite checks passed using newly created work/security-smoke-*
+  databases: React/CSP, denied reads/writes, native file grants, CSV metadata and amounts,
+  failed-row rollback, failed-transfer rollback, valid commit, accounting balances,
+  single-use export authorization, Excel export/import, formula escaping, no private seed.
+- Existing build warnings concern frontend bundle/logo size; no build errors.
+
+Repeat with a supported Node version on PATH:
+  npm ci
+  npm run test:security
+  npm run build:prod
+  npm run test:electron-security
+  npm audit
+  npx electron-builder --win --dir --publish never --config.directories.output=work/security-package
+  node scripts/check-package.cjs
+
+Remaining work before a paid release
+- Full backup/restore and recovery design; optional encryption with a deliberate key
+  recovery policy. The financial SQLite database is still plaintext at the app layer.
+- Signing, updater/licensing design, installation/upgrade tests and Store-to-direct
+  migration tests. No paid-release readiness or tamper-proof protection is claimed.
+- Complete GitHub Support's purge of cached old commits. Existing clones and
+  already distributed builds are not erased by rewriting public Git history.
+
+Repository hygiene checkpoint
+- Development branch: codex/libri-security-hygiene. No installer or website deployment.
+- Untracked 93 generated JavaScript/source-map files without deleting local outputs.
+- Added database sidecars, signing material and installer extensions to ignore rules.
+- Replaced the legacy launcher that killed all Node/Electron processes with npm start.
+- Updated setup and verification instructions; verified TypeScript emits into a fresh
+  ignored output directory without depending on the previously tracked generated files.
+- Public history cleanup updated main, the security branch, backup/pre-refactor,
+  and the v1.0.0 tag. Other refs, including both pull-request refs, were unchanged.
+- Local bank input was verified byte-for-byte, with ignored local backups preserved.
+  Local branch refs were synchronized while retaining recovery history. A local
+  pre-push hook rejects the known bank-data blob and both historical paths; checks
+  verified rejection of old history and acceptance of cleaned history and deletion.
+- Main received only the bank-data cleanup and ignore rules. The security changes
+  remain on this development branch; no new installer was released.

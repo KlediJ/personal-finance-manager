@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron';
+import { secureIpcMain as ipcMain } from '../security/ipc';
+
 import { RecurringBillRepository, BillPaymentRepository } from '../../src/data-storage/repositories/RecurringBillRepository';
 import { RecurringBill, BillPayment } from '../../src/data-storage/models/RecurringBill';
 

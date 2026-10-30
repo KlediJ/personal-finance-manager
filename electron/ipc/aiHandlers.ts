@@ -1,6 +1,5 @@
-import { ipcMain } from 'electron';
-import * as fs from 'fs';
-import * as path from 'path';
+import { secureIpcMain as ipcMain } from '../security/ipc';
+
 import { TransactionCategorizationService, CategorizationResult } from '../../src/data-processing/ai/TransactionCategorizationService';
 import { Transaction } from '../../src/data-storage/models/Transaction';
 import { Category } from '../../src/data-storage/models/Category';
@@ -10,7 +9,6 @@ import { fingerprintDescription } from '../../src/data-processing/ai/Fingerprint
 // Global AI service instance
 let categorizationService: TransactionCategorizationService | null = null;
 let dbInstance: any = null;
-let trainingCorpusPath: string | null = null;
 
 interface CategorizationRule {
   rule_id?: number;
@@ -90,16 +88,8 @@ const initializeAIServices = async (db?: any) => {
           ON ai_training_corpus (category_id, category_name)
       `).run();
 
-      // Try to resolve the labeled CSV path once
-      const candidatePath = path.join(process.cwd(), 'docs', 'labeled_transactions_wf_checking_2025-09.csv');
-      if (fs.existsSync(candidatePath)) {
-        trainingCorpusPath = candidatePath;
-      }
-
-      // Seed training table from CSV if available and not already populated
-      if (trainingCorpusPath) {
-        seedTrainingCorpusFromCSV(trainingCorpusPath);
-      }
+      // Training examples come only from this user's explicit categorization feedback.
+      // Never auto-import developer files from the process working directory.
     } catch (error) {
       console.error('Failed to initialize ai_categorization_feedback table:', error);
     }
@@ -113,60 +103,6 @@ const ensureDatabaseReady = (): boolean => {
     return false;
   }
   return true;
-};
-
-// Seed the local training table from a labeled CSV (one-time best effort)
-const seedTrainingCorpusFromCSV = (csvPath: string) => {
-  try {
-    const rowCount = dbInstance
-      .prepare('SELECT COUNT(*) as cnt FROM ai_training_corpus')
-      .get()?.cnt as number;
-
-    if (rowCount > 0) {
-      return; // already seeded
-    }
-
-    const content = fs.readFileSync(csvPath, 'utf-8');
-    const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    if (lines.length <= 1) return;
-
-    const header = lines[0].split(',');
-    const idx = {
-      description_raw: header.indexOf('description_raw'),
-      amount: header.indexOf('amount'),
-      transaction_type_label: header.indexOf('transaction_type_label'),
-      payee_label: header.indexOf('payee_label'),
-      category_name_label: header.indexOf('category_name_label')
-    };
-
-    const insertStmt = dbInstance.prepare(`
-      INSERT INTO ai_training_corpus (
-        fingerprint, raw_description, amount, transaction_type, category_id, category_name, payee_name, source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    let inserted = 0;
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      // Basic CSV split with quote handling
-      const cells = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-      if (!cells || cells.length < header.length) continue;
-
-      const rawDescription = cells[idx.description_raw] ?? '';
-      const amount = Number(cells[idx.amount] ?? 0);
-      const txnType = cells[idx.transaction_type_label] ?? '';
-      const payee = cells[idx.payee_label] ?? '';
-      const categoryName = cells[idx.category_name_label] ?? '';
-      const fp = fingerprintDescription(rawDescription);
-
-      insertStmt.run(fp, rawDescription, amount, txnType, null, categoryName, payee, 'seed_csv');
-      inserted++;
-    }
-
-    console.log(`Seeded training corpus from CSV (${inserted} rows)`);
-  } catch (error) {
-    console.error('Error seeding training corpus from CSV:', error);
-  }
 };
 
 // Look up majority category by fingerprint from training corpus + feedback

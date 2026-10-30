@@ -1,5 +1,8 @@
-import { ipcMain, dialog } from 'electron';
+import { secureIpcMain as ipcMain } from '../security/ipc';
+import { dialog } from 'electron';
 import * as fs from 'fs';
+import { grantFile, authorizedFile, revokeExport } from '../security/files';
+import { csvCell } from '../../src/data-processing/import-export/safety';
 import ExcelJS from 'exceljs';
 import { DatabaseConnection } from '../../src/data-storage/database/DatabaseConnection';
 
@@ -19,7 +22,8 @@ interface ShowSaveDialogOptions {
 }
 
 export function setupExportHandlers(): void {
-  ipcMain.handle('export:showSaveDialog', async (_event, options?: ShowSaveDialogOptions) => {
+  ipcMain.handle('export:showSaveDialog', async (event, options?: ShowSaveDialogOptions) => {
+    revokeExport(event.sender.id);
     const format = options?.format ?? 'csv';
     const defaultBase = options?.defaultPath ?? 'transactions_export';
     const suggestedName =
@@ -38,15 +42,16 @@ export function setupExportHandlers(): void {
 
     return {
       canceled: result.canceled,
-      filePath: result.filePath
+      filePath: result.filePath ? grantFile(event, result.filePath, 'write', [format === 'excel' ? '.xlsx' : '.csv']) : undefined
     };
   });
 
-  ipcMain.handle('export:transactionsToCSV', async (_event, options: ExportOptions) => {
+  ipcMain.handle('export:transactionsToCSV', async (event, options: ExportOptions) => {
     try {
+      const filePath = authorizedFile(event, options.filePath, 'write', '.csv');
       const rows = getFilteredTransactions(options);
       const csv = buildCsv(rows);
-      fs.writeFileSync(options.filePath, csv, { encoding: 'utf8' });
+      fs.writeFileSync(filePath, csv, { encoding: 'utf8' });
       return {
         success: true,
         path: options.filePath,
@@ -61,8 +66,9 @@ export function setupExportHandlers(): void {
     }
   });
 
-  ipcMain.handle('export:transactionsToExcel', async (_event, options: ExportOptions) => {
+  ipcMain.handle('export:transactionsToExcel', async (event, options: ExportOptions) => {
     try {
+      const filePath = authorizedFile(event, options.filePath, 'write', '.xlsx');
       const rows = getFilteredTransactions(options);
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Transactions');
@@ -94,7 +100,7 @@ export function setupExportHandlers(): void {
       const amountColumn = worksheet.getColumn('amount');
       amountColumn.numFmt = '#,##0.00';
 
-      await workbook.xlsx.writeFile(options.filePath);
+      await workbook.xlsx.writeFile(filePath);
       return {
         success: true,
         path: options.filePath,
@@ -177,19 +183,8 @@ function buildCsv(rows: any[]): string {
       row.transaction_type ?? '',
       row.amount ?? ''
     ];
-    return values.map(csvEscape).join(',');
+    return values.map(csvCell).join(',');
   });
 
   return [headers.join(','), ...lines].join('\n');
-}
-
-function csvEscape(value: any): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  const str = String(value);
-  if (/[",\n]/.test(str)) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
 }

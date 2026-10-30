@@ -118,8 +118,8 @@ contextBridge.exposeInMainWorld('api', {
     // Data validation and import
     validateTransactions: (data: any[], mappings: Record<string, string>) => 
       ipcRenderer.invoke('import:validateTransactions', data, mappings),
-    saveTransactions: (transactions: Transaction[]) => 
-      ipcRenderer.invoke('import:saveTransactions', transactions)
+    saveTransactions: (transactions: Transaction[], transfers: any[] = []) =>
+      ipcRenderer.invoke('import:saveTransactions', transactions, transfers)
   },
   
   export: {

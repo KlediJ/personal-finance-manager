@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron';
+import { secureIpcMain as ipcMain } from '../security/ipc';
+
 import { InterestExpenseRepository } from '../../src/data-storage/repositories/InterestExpenseRepository';
 import { InterestExpense, InterestExpenseType } from '../../src/data-storage/models/InterestExpense';
 

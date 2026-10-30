@@ -83,5 +83,19 @@ Repository hygiene checkpoint
   Local branch refs were synchronized while retaining recovery history. A local
   pre-push hook rejects the known bank-data blob and both historical paths; checks
   verified rejection of old history and acceptance of cleaned history and deletion.
-- Main received only the bank-data cleanup and ignore rules. The security changes
-  remain on this development branch; no new installer was released.
+- Security hardening was merged into main on October 30, 2026 (c986257).
+  No public installer was released.
+
+Internal Windows baseline check - October 30, 2026
+- Fresh production build, six security test groups and fifteen Electron/SQLite checks passed.
+- Built an unsigned x64 NSIS installer with a separate Libri Internal Test identity;
+  installer size 143,509,435 bytes. Installation completed with exit code 0.
+- Used the installed app's actual screens and native file dialogs to create Sample
+  Checking, import two synthetic CSV rows, inspect Ledger and Dashboard, and export CSV.
+- Verified income 1,234.56, expense 123.45, and net/account balance 1,111.11.
+- Closed all test app processes, checked the saved database, and reopened the installed
+  app: both rows and the same Dashboard totals persisted.
+- Test data is isolated in the libri-internal-test user profile. Personal Libri data
+  was not used. Local installer and export are under work/internal-test-2026-10-30/.
+- This is a clean-install baseline; existing-version upgrade and Store migration
+  checks, code signing, and public release qualification remain separate work.

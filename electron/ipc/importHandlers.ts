@@ -1,5 +1,8 @@
-import { ipcMain, dialog } from 'electron';
-import * as fs from 'fs';
+import { secureIpcMain as ipcMain } from '../security/ipc';
+import { dialog } from 'electron';
+import { grantFile, clearFileGrants, readImportFile, MAX_IMPORT_ROWS } from '../security/files';
+import { validateWorkbookArchive } from '../security/workbook';
+import { parseImportAmount } from '../../src/data-processing/import-export/safety';
 import Papa from 'papaparse';
 import ExcelJS from 'exceljs';
 import { DatabaseConnection } from '../../src/data-storage/database/DatabaseConnection';
@@ -46,7 +49,8 @@ export function setupImportHandlers(): void {
   /**
    * File open dialog for imports
    */
-  ipcMain.handle('import:showFileDialog', async (_event, _options?: any) => {
+  ipcMain.handle('import:showFileDialog', async (event, _options?: any) => {
+    clearFileGrants(event.sender.id);
     const result = await dialog.showOpenDialog({
       title: 'Select File to Import',
       filters: [
@@ -60,51 +64,35 @@ export function setupImportHandlers(): void {
       return { canceled: true };
     }
 
-    return { canceled: false, filePath: result.filePaths[0] };
+    return { canceled: false, filePath: grantFile(event, result.filePaths[0], 'read', ['.csv', '.xlsx']) };
   });
 
   /**
    * CSV parsing using PapaParse (matches legacy behavior closely)
    */
-  ipcMain.handle('import:parseCSV', async (_event, filePath: string): Promise<CsvParseResult> => {
+  ipcMain.handle('import:parseCSV', async (event, filePath: string): Promise<CsvParseResult> => {
     try {
-      const fileContent = fs.readFileSync(filePath, 'utf8');
+      const fileContent = readImportFile(event, filePath, '.csv').toString('utf8');
 
       return await new Promise<CsvParseResult>((resolve, reject) => {
+        const data: any[] = [];
+        let meta: any = {};
         Papa.parse(fileContent, {
           header: true,
-          dynamicTyping: true,
+          dynamicTyping: false, // Preserve account identifiers and amount/date strings for explicit validation.
           skipEmptyLines: true,
-          // Try to handle different delimiters in case the CSV isn't standard
           delimitersToGuess: [',', '\t', ';', '|'],
-          complete: (results) => {
-            if (results.errors && results.errors.length > 0) {
-              // Filter out non-critical errors to match the more forgiving dev behavior
-              const criticalErrors = results.errors.filter(
-                (e: any) =>
-                  e.type !== 'FieldMismatch' &&
-                  e.code !== 'TooFewFields' &&
-                  e.code !== 'TooManyFields'
-              );
-
-              if (criticalErrors.length > 0) {
-                reject({
-                  success: false,
-                  errors: criticalErrors
-                });
-                return;
-              }
+          step: (row, parser) => {
+            if (row.errors.length || data.length >= MAX_IMPORT_ROWS || Object.keys(row.data as object).length > 200) {
+              reject(new Error('Invalid CSV structure or import limit exceeded (50,000 rows, 200 columns).'));
+              parser.abort();
+              return;
             }
-
-            resolve({
-              success: true,
-              data: results.data,
-              meta: results.meta
-            });
+            meta = row.meta;
+            data.push(row.data);
           },
-          error: (error: any) => {
-            reject({ success: false, error });
-          }
+          complete: () => resolve({ success: true, data, meta }),
+          error: reject
         });
       });
     } catch (error: any) {
@@ -121,7 +109,7 @@ export function setupImportHandlers(): void {
   /**
    * Excel parsing using ExcelJS (matches legacy behavior closely)
    */
-  ipcMain.handle('import:parseExcel', async (_event, filePath: string): Promise<ExcelParseResult> => {
+  ipcMain.handle('import:parseExcel', async (event, filePath: string): Promise<ExcelParseResult> => {
     try {
       if (filePath.toLowerCase().endsWith('.xls')) {
         return {
@@ -132,14 +120,19 @@ export function setupImportHandlers(): void {
       }
 
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.readFile(filePath);
+      const bytes = readImportFile(event, filePath, '.xlsx');
+      await validateWorkbookArchive(bytes);
+      await workbook.xlsx.load(bytes as any);
 
       const result: ExcelParseResult = {
         success: true,
         sheets: []
       };
 
+      let totalRows = 0;
       workbook.eachSheet((worksheet) => {
+        totalRows += worksheet.rowCount;
+        if (totalRows > MAX_IMPORT_ROWS || worksheet.columnCount > 200) throw new Error('Workbook exceeds 50,000 rows or 200 columns.');
         const sheetData: any[] = [];
         const headers: string[] = [];
 
@@ -376,19 +369,11 @@ export function setupImportHandlers(): void {
 
           // 3. Amount parsing and normalization
           if (mappings.amount && row[mappings.amount] !== undefined) {
-            let amount = row[mappings.amount];
-
-            if (typeof amount === 'string') {
-              amount = amount.replace(/[^0-9\-.,]/g, '');
-              amount = amount.replace(',', '.');
-              amount = parseFloat(amount);
-            }
-
-            if (typeof amount !== 'number' || isNaN(amount)) {
-              rowErrors.amount = `Invalid amount: ${row[mappings.amount]}`;
+            try {
+              transaction.amount = parseImportAmount(row[mappings.amount]);
+            } catch (error) {
+              rowErrors.amount = error instanceof Error ? error.message : 'Invalid amount';
               hasErrors = true;
-            } else {
-              transaction.amount = amount;
             }
           } else {
             rowErrors.amount = 'Amount is required';
@@ -514,33 +499,35 @@ export function setupImportHandlers(): void {
    */
   ipcMain.handle(
     'import:saveTransactions',
-    async (_event, transactions: Transaction[]) => {
+    async (_event, transactions: Transaction[], transfers: Array<{fromAccountId: number; toAccountId: number; amount: number; description?: string; date?: string}> = []) => {
       try {
-        const accountingService = new AccountingService();
-        let successCount = 0;
-
+        if (!Array.isArray(transactions) || !Array.isArray(transfers) || transactions.length + transfers.length > MAX_IMPORT_ROWS) {
+          throw new Error('Invalid import batch or too many rows.');
+        }
         for (const tx of transactions) {
-          try {
-            const result = accountingService.createTransaction(tx);
-            if (result.success) {
-              successCount++;
-            }
-          } catch (err) {
-            console.error('Error creating transaction during import:', err);
+          if (!tx || !Number.isInteger(tx.account_id) || tx.account_id <= 0 || !Number.isFinite(tx.amount) ||
+              !/^\d{4}-\d{2}-\d{2}$/.test(tx.date) || !['income', 'expense', 'transfer'].includes(tx.transaction_type)) {
+            throw new Error('Invalid transaction in import batch.');
           }
         }
-
-        return {
-          success: successCount === transactions.length,
-          count: successCount
-        };
-      } catch (error: any) {
-        console.error('Error saving imported transactions:', error);
-        return {
-          success: false,
-          count: 0,
-          error: error?.message ?? 'Unknown error while saving transactions'
-        };
+        const db = DatabaseConnection.getInstance();
+        const accountingService = new AccountingService();
+        // Transfer pairs and regular transactions commit together, or all roll back.
+        db.transaction(() => {
+          for (const tx of transactions) {
+            if (!accountingService.createTransaction(tx).success) throw new Error('Transaction could not be imported.');
+          }
+          for (const transfer of transfers) {
+            if (!Number.isInteger(transfer.fromAccountId) || !Number.isInteger(transfer.toAccountId) ||
+                !Number.isFinite(transfer.amount) || transfer.amount <= 0) throw new Error('Invalid transfer.');
+            if (!accountingService.createTransfer(transfer.fromAccountId, transfer.toAccountId, transfer.amount, transfer.description, transfer.date).success) {
+              throw new Error('Transfer could not be imported.');
+            }
+          }
+        })();
+        return { success: true, count: transactions.length + transfers.length, importedTransactions: transactions.length, importedTransfers: transfers.length };
+      } catch (error) {
+        return { success: false, count: 0, importedTransactions: 0, importedTransfers: 0, error: error instanceof Error ? error.message : 'Import failed; no rows were saved.' };
       }
     }
   );

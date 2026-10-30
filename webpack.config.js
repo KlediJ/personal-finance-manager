@@ -48,6 +48,7 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
+      csp: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; connect-src 'self' ws://localhost:3002",
       template: './src/index.html'
     }),
     new webpack.DefinePlugin({

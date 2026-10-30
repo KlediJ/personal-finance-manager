@@ -3,7 +3,6 @@ node_modules/
 npm-debug.log
 yarn-debug.log
 yarn-error.log
-package-lock.json
 
 # Build output
 dist/
@@ -15,12 +14,19 @@ build/
 electron/*.js
 electron/*.js.map
 electron/electron/
+electron/src/
 
 # Database files
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
 
 # Environment variables
 .env
@@ -28,6 +34,17 @@ electron/electron/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*
+!.env.example
+
+# Signing material and packaged releases
+*.pfx
+*.p12
+*.key
+*.exe
+*.msix
+*.appx
+*.blockmap
 
 # Editor directories and files
 .idea/
@@ -45,3 +62,9 @@ electron/electron/
 debug/
 debug-*.js
 nul
+
+# Isolated security-test data and package outputs
+work/
+
+# Personal training input stays local; never include it in future commits.
+docs/labeled_transactions_wf_checking_2025-09.csv

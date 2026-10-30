@@ -329,7 +329,8 @@ export class CsvProcessor {
     return Papa.unparse(formattedTransactions, {
       header: true,
       newline: '\r\n',
-      delimiter: ','
+      delimiter: ',',
+      escapeFormulae: true
     });
   }
 }

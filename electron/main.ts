@@ -1,5 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { secureIpcMain as ipcMain } from './security/ipc';
+import { app, BrowserWindow, dialog, session } from 'electron';
 import * as path from 'path';
+import { trustWindow, isTrustedDocument } from './security/ipc';
+import { clearFileGrants } from './security/files';
 import { DatabaseManager } from '../src/data-storage/database/DatabaseManager';
 import { DatabaseConnection } from '../src/data-storage/database/DatabaseConnection';
 import { setupAccountHandlers } from './ipc/accountHandlers';
@@ -15,6 +18,8 @@ import { initializeAIHandlers, cleanupAIServices } from './ipc/aiHandlers';
 
 let mainWindow: BrowserWindow | null = null;
 let databaseInitialized = false;
+let handlersInitialized = false;
+const development = !app.isPackaged && process.env.NODE_ENV === 'development';
 
 async function initializeDatabase(): Promise<void> {
   try {
@@ -43,16 +48,19 @@ async function createWindow() {
   }
 
   try {
-    setupAccountHandlers();
-    setupTransactionHandlers();
-    setupCategoryHandlers();
-    setupPayeeHandlers();
-    setupBudgetHandlers();
-    setupBillHandlers();
-    setupLoanHandlers();
-    setupInterestHandlers();
-    setupImportHandlers();
-    initializeAIHandlers();
+    if (!handlersInitialized) {
+      setupAccountHandlers();
+      setupTransactionHandlers();
+      setupCategoryHandlers();
+      setupPayeeHandlers();
+      setupBudgetHandlers();
+      setupBillHandlers();
+      setupLoanHandlers();
+      setupInterestHandlers();
+      setupImportHandlers();
+      initializeAIHandlers();
+      handlersInitialized = true;
+    }
   } catch (error) {
     console.error('IPC handler setup failed:', error);
     const message = error instanceof Error ? error.message : 'Unknown IPC initialization error';
@@ -66,25 +74,45 @@ async function createWindow() {
 
   // Create the browser window
   mainWindow = new BrowserWindow({
+    show: !(!app.isPackaged && process.env.LIBRI_SECURITY_TEST === '1'),
     width: 1200,
     height: 800,
     icon: path.join(__dirname, '../src/assets/images/logo.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
       preload: path.join(__dirname, 'preload.js')
     }
   });
 
+  const indexPath = path.join(app.getAppPath(), 'dist', 'index.html');
+  trustWindow(mainWindow, indexPath, development);
+  const contents = mainWindow.webContents;
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-navigate', (event, url) => {
+    if (!isTrustedDocument(url)) event.preventDefault();
+  });
+  contents.on('will-redirect', (event, url) => {
+    if (!isTrustedDocument(url)) event.preventDefault();
+  });
+  contents.on('will-attach-webview', event => event.preventDefault());
+  contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) clearFileGrants(contents.id);
+  });
+  const senderId = contents.id;
+  contents.on('destroyed', () => clearFileGrants(senderId));
+
   // In development mode, load from webpack dev server
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:3000');
+  if (development) {
+    mainWindow.loadURL('http://localhost:3002');
     // Open DevTools
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load the bundled index.html from the app's dist folder.
     // app.getAppPath() points at the app.asar root when packaged.
-    const indexPath = path.join(app.getAppPath(), 'dist', 'index.html');
     mainWindow.loadFile(indexPath);
   }
 
@@ -112,7 +140,14 @@ ipcMain.handle('app:getEnvironment', () => {
 
 // When Electron has finished initialization
 app.whenReady().then(() => {
-  // Create window
+  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.on('will-download', event => event.preventDefault());
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src " +
+      (development ? "'self' ws://localhost:3002" : "'none'") + "; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'";
+    callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [policy] } });
+  });
   createWindow();
 });
 

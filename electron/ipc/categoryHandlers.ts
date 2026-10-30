@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron';
+import { secureIpcMain as ipcMain } from '../security/ipc';
+
 import { DatabaseManager } from '../../src/data-storage/database/DatabaseManager';
 import { Category, CategoryType } from '../../src/data-storage/models/Category';
 

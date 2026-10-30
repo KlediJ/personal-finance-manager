@@ -122,7 +122,9 @@ declare global {
           errors: Array<{ row: number, errors: Record<string, string> }>,
           stats: { total: number, valid: number, invalid: number }
         }>;
-        saveTransactions: (transactions: Transaction[]) => Promise<{
+        saveTransactions: (transactions: Transaction[], transfers?: Array<{fromAccountId: number; toAccountId: number; amount: number; description?: string; date?: string}>) => Promise<{
+          importedTransactions: number;
+          importedTransfers: number;
           success: boolean,
           count?: number,
           error?: string

@@ -42,6 +42,7 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
+      csp: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; connect-src 'none'",
       template: './src/index.html',
       minify: {
         removeComments: true,

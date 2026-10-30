@@ -8,8 +8,12 @@
     "productName": "Libri",
     "artifactName": "Libri Setup ${version}.${ext}",
     "files": [
-      "dist/**/*",
+      "dist/index.html",
+      "dist/bundle*.js",
+      "dist/bundle*.js.LICENSE.txt",
+      "dist/assets/**/*",
       "electron/electron/**/*.js",
+      "!electron/electron/ai/**/*",
       "electron/src/**/*.js",
       "src/assets/**/*",
       "config.js"
@@ -30,9 +34,9 @@
   "scripts": {
     "start": "concurrently \"npm run start:webpack\" \"npm run start:electron\"",
     "start:webpack": "webpack serve --config webpack.config.js",
-    "start:electron": "cross-env NODE_ENV=development electron electron-dev.js",
-    "start:db-only": "cross-env NODE_ENV=development electron electron-dev.js",
-    "rebuild-sqlite": "node rebuild-sqlite.js",
+    "start:electron": "npm run build:electron && cross-env NODE_ENV=development electron .",
+    "start:db-only": "npm run build:electron && cross-env NODE_ENV=development electron .",
+    "rebuild-sqlite": "electron-builder install-app-deps",
     "db:reset": "node scripts/reset-db.js",
     "db:init": "node scripts/init-db.js",
     "db:setup": "npm run rebuild-sqlite && npm run db:init",
@@ -40,17 +44,23 @@
     "build:webpack": "webpack --config webpack.config.js",
     "build:electron": "tsc -p electron/tsconfig-electron.json",
     "clean:dist": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-ChildItem .\\dist -File | Where-Object { ($_.Name -like 'bundle*') -or ($_.Name -in @('index.html','builder-debug.yml','builder-effective-config.yaml')) } | Remove-Item -Force; if (Test-Path .\\dist\\assets) { Remove-Item .\\dist\\assets -Recurse -Force }; if (Test-Path .\\dist\\.icon-ico) { Remove-Item .\\dist\\.icon-ico -Recurse -Force }\"",
+    "prepare:msix": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$pkg = Get-Content .\\package.json -Raw | ConvertFrom-Json; $versionParts = $pkg.version.Split('.'); $msixVersion = if ($versionParts.Length -eq 3) { \\\"$($pkg.version).0\\\" } elseif ($versionParts.Length -eq 4) { $pkg.version } else { throw 'package.json version must have 3 or 4 numeric parts for MSIX packaging.' }; $staging = '.\\dist\\msix-staging'; if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }; Copy-Item .\\dist\\win-unpacked $staging -Recurse; New-Item -ItemType Directory -Force (Join-Path $staging 'Assets') | Out-Null; Copy-Item .\\src\\assets\\images\\logo.png (Join-Path $staging 'Assets\\Square44x44Logo.png') -Force; Copy-Item .\\src\\assets\\images\\logo.png (Join-Path $staging 'Assets\\Square150x150Logo.png') -Force; Copy-Item .\\src\\assets\\images\\logo.png (Join-Path $staging 'Assets\\StoreLogo.png') -Force; Copy-Item .\\src\\assets\\images\\logo.png (Join-Path $staging 'Assets\\SplashScreen.png') -Force; $manifest = Get-Content .\\msix\\Package.appxmanifest.template -Raw; $manifest = $manifest.Replace('__VERSION__', $msixVersion).Replace('__IDENTITY_NAME__', 'KlediJenicerri.LibriDesktop').Replace('__PUBLISHER__', 'CN=0CB9D586-4887-436E-B669-9FA04EBC5D48').Replace('__PUBLISHER_DISPLAY_NAME__', 'Kledi Jenicerri').Replace('__DISPLAY_NAME__', 'Libri Desktop').Replace('__DESCRIPTION__', 'Private, local desktop finance tracker.').Replace('__EXECUTABLE__', 'Libri.exe'); Set-Content (Join-Path $staging 'Package.appxmanifest') $manifest -Encoding UTF8\"",
     "clean:electron": "rm -f electron/*.js electron/*.js.map",
     "build": "npm run build:webpack && npm run build:electron",
     "build:prod": "cross-env NODE_ENV=production webpack --config webpack.prod.js && npm run build:electron",
     "package": "electron-builder",
     "package:win": "electron-builder --win",
+    "package:msix": "electron-builder --win --dir && npm run prepare:msix && npx @microsoft/winappcli@latest pack .\\dist\\msix-staging --output .\\dist\\LibriDesktop.msix",
     "package:mac": "electron-builder --mac",
     "package:linux": "electron-builder --linux",
     "dist": "npm run clean:dist && npm run build:prod && npm run package",
+    "dist:msix": "npm run build:prod && npm run package:msix",
     "eval:categorization": "node scripts/evaluate-categorization.js",
     "inspect:categories": "node scripts/inspect-live-categories.js",
-    "seed:feedback:wf": "node scripts/seed-feedback-from-wf.js"
+    "seed:feedback:wf": "node scripts/seed-feedback-from-wf.js",
+    "test:security": "node --test tests/security.test.cjs",
+    "postinstall": "electron-builder install-app-deps",
+    "test:electron-security": "node scripts/run-electron-security.cjs"
   },
   "author": "",
   "license": "MIT",
@@ -61,12 +71,11 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "concurrently": "^9.1.2",
-    "copy-webpack-plugin": "^13.0.0",
+    "copy-webpack-plugin": "14.0.0",
     "cross-env": "^7.0.3",
     "css-loader": "^7.1.2",
-    "electron": "^35.0.2",
-    "electron-builder": "^25.1.8",
-    "electron-rebuild": "^3.2.9",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
     "electron-reload": "^2.0.0-alpha.1",
     "html-webpack-plugin": "^5.6.3",
     "style-loader": "^4.0.0",
@@ -75,7 +84,9 @@
     "typescript": "^5.8.2",
     "webpack": "^5.98.0",
     "webpack-cli": "^6.0.1",
-    "webpack-dev-server": "^5.2.0"
+    "webpack-dev-server": "6.1.0",
+    "@types/yauzl": "^2.10.3",
+    "@electron/rebuild": "^4.0.1"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -83,15 +94,24 @@
     "@mui/icons-material": "^6.4.7",
     "@mui/material": "^6.4.7",
     "@types/better-sqlite3": "^7.6.12",
-    "better-sqlite3": "^11.9.0",
+    "better-sqlite3": "13.0.3",
     "chart.js": "^4.4.8",
     "exceljs": "^4.4.0",
-    "lodash": "^4.17.21",
-    "onnxruntime-node": "^1.20.1",
-    "onnxruntime-web": "^1.20.1",
     "papaparse": "^5.5.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.3.0"
+    "react-router-dom": "7.18.5",
+    "yauzl": "^3.2.0"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1",
+      "tmp": "^0.2.6"
+    },
+    "brace-expansion@>=2 <3": "2.1.7",
+    "minimatch@>=3 <4": "3.1.5"
+  },
+  "engines": {
+    "node": ">=22.15.0"
   }
 }

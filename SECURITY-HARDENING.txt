@@ -30,9 +30,10 @@ Data correctness and privacy
 - Mixed regular/transfer import batches commit in one SQLite transaction or roll back.
   This prevents partial-import retries; it is not a full duplicate detection system.
 - Removed automatic ingestion of developer CSVs from the working directory.
-- Bank-training CSV remains on disk and is ignored; it is removed from the tracked
-  tree in this development checkpoint. Older Git commits may still contain it; history and remote exposure need
-  a separate review before any repository is made public. No history was rewritten.
+- Bank-training CSV remains on disk and is ignored. On October 30, 2026, both
+  historical bank-input paths were removed from public Git history. A fresh mirror
+  verified all 16 public refs and confirmed the sensitive contents are unreachable.
+  GitHub Support still needs to purge cached old commits; a local request is prepared.
 
 Packaging
 - Replaced the broad dist/**/* inclusion with explicit frontend artifact patterns.
@@ -66,8 +67,8 @@ Remaining work before a paid release
   recovery policy. The financial SQLite database is still plaintext at the app layer.
 - Signing, updater/licensing design, installation/upgrade tests and Store-to-direct
   migration tests. No paid-release readiness or tamper-proof protection is claimed.
-- Review the tracked-data history noted above. A clean current package does not
-  erase earlier Git history or already distributed builds.
+- Complete GitHub Support's purge of cached old commits. Existing clones and
+  already distributed builds are not erased by rewriting public Git history.
 
 Repository hygiene checkpoint
 - Development branch: codex/libri-security-hygiene. No installer or website deployment.
@@ -76,5 +77,11 @@ Repository hygiene checkpoint
 - Replaced the legacy launcher that killed all Node/Electron processes with npm start.
 - Updated setup and verification instructions; verified TypeScript emits into a fresh
   ignored output directory without depending on the previously tracked generated files.
-- Remote main was checked at 4962dc5. It still contains the bank-training CSV. Pushing
-  this separate branch does not remove that file from main or older history.
+- Public history cleanup updated main, the security branch, backup/pre-refactor,
+  and the v1.0.0 tag. Other refs, including both pull-request refs, were unchanged.
+- Local bank input was verified byte-for-byte, with ignored local backups preserved.
+  Local branch refs were synchronized while retaining recovery history. A local
+  pre-push hook rejects the known bank-data blob and both historical paths; checks
+  verified rejection of old history and acceptance of cleaned history and deletion.
+- Main received only the bank-data cleanup and ignore rules. The security changes
+  remain on this development branch; no new installer was released.

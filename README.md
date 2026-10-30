@@ -65,5 +65,8 @@ recovery have been validated. A source push is not a product release.
 
 Keep personal data, database sidecars, credentials, signing keys, test output, and
 packaged binaries out of commits. Personal training input is no longer loaded
-automatically. Its local CSV is preserved but removed from the current tracked tree;
-older Git history still needs a separate privacy review. No history was rewritten.
+automatically. Its local CSV is preserved and ignored. On October 30, 2026, both
+historical bank-input paths were removed from public branches and tags, and a fresh
+clone verified that their contents are absent from reachable history. GitHub's
+server-side purge of cached old commits still requires Support. Existing clones
+must use the cleaned history; merging old history can restore the removed data.

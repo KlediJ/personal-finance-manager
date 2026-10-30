@@ -68,3 +68,8 @@ work/
 
 # Personal training input stays local; never include it in future commits.
 docs/labeled_transactions_wf_checking_2025-09.csv
+
+# Keep private bank inputs and local cleanup files out of Git.
+/docs/labeled_transactions_wf_checking_2025-09.csv
+/docs/WF_Checking_092025_raw.csv
+/work/
